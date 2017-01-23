@@ -12,24 +12,24 @@ def transform(javaFile, pyFile):
 	'''
 	with open(javaFile, 'r') as jFile:
 		with open(pyFile, 'w+') as pFile:
+			className = None
 			for oldLine in jFile:
 				line = oldLine
-				
+
 				match = re.search(r'^(\s*)package', line)
 				if match:
 					line = re.sub(r'^(\s*)package', r'\1#package', line)
 					continue
-				
+
 				match = re.search(r'^(\s*)import', line)
 				if match:
 					line = re.sub(r'^(\s*)import', r'\1#import', line)
 					continue
 
 				# CLASS DECLARATION
-				className = None
-				match = re.search(r'class (?P<name>\w+)', line)
-				if match:
-					className = match.group('name')
+				classDefLine = re.search(r'class (?P<name>\w+)', line)
+				if classDefLine:
+					className = classDefLine.group('name')
 					className = re.compile(className)
 				line = re.sub(r'(.*?)\w* class (?P<name>\w+)(.*){.*(?P<nline>\r?\n?)', r'\1def class \g<name>(): \3\g<nline>', line)
 
@@ -39,7 +39,7 @@ def transform(javaFile, pyFile):
 				# Adds the interfaces if there were no parents
 				line = re.sub(r'\(\).*implements (?P<contracts>(.*))', r'(\g<contracts>)', line)
 				# Adds the interfaces if there were parents
-				line = re.sub(r'\((?P<parents>.+?).*implements (?P<contracts>\S*)\s*', r'(\g<parents>,\g<contracts>',line)
+				line = re.sub(r'\((?P<parents>.+?).*implements (?P<contracts>\S*)\s*', r'(\g<parents>,\g<contracts>', line)
 
 
 				# Operators
@@ -48,7 +48,7 @@ def transform(javaFile, pyFile):
 				line = re.sub(r'\|\|', 'or', line)
 				line = re.sub(r'try\s*{', 'try:', line)
 				line = re.sub(r'catch.*\(\s*(?:final)?\s*(?P<class>\w*Exception)\s+(?P<name>\w*)\)\s*{', r'except \g<class> as \g<name>:', line)
-				line = re.sub(r'finally\s*{', 'else:' ,line)
+				line = re.sub(r'finally\s*{', 'else:' , line)
 
 				# Type erasure
 				line = re.sub(r'String (.*)', r'\1', line)
@@ -56,30 +56,41 @@ def transform(javaFile, pyFile):
 				line = re.sub(r'Integer (.*)', r'\1', line)
 				line = re.sub(r'[Dd]ouble (.*)', r'\1', line)
 				line = re.sub(r'[Ff]loat (.*)', r'\1', line)
+				line = re.sub(r'[Ll]ong (.*)', r'\1', line)
 				line = re.sub(r'[Bb]oolean (.*)', r'\1', line)
-				
+
 				# Variable declaration
 				line = re.sub(r'public (.*);', r'\1', line)
 				line = re.sub(r'private (.*);', r'\1', line)
 				line = re.sub(r'protected (.*);', r'\1', line)
 				line = re.sub(r'[A-Z]\w* (?P<vname>\w+)\s?=(?P<val>.*);', r'\g<vname> = \g<val>', line)
 				line = re.sub(r';(\s*)$', '\n', line)
-				
-				line = re.sub(r'while\s*\(','while', line)
-				line = re.sub(r'if\s*\(','if ', line)
+
+				line = re.sub(r'\((?P<cond>.*!.*)\)', r'\(not \g<cond>):', line)
+				line = re.sub(r'\((?P<cond>.*)\).*{', r'while \g<cond>:', line)
+				line = re.sub(r'while\s*\((?P<cond>.*)\).*{', r'while \g<cond>:', line)
+				line = re.sub(r'if\s*\((?P<cond>.*)\).*{', r'if \g<cond>:', line)
 				line = re.sub(r'}?.*else.*{?', r'else:', line)
-				line = re.sub(r'for.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<\W*(\w+);.*\).*\{?.*(?P<nline>\r?\n?)', r'for \1 in range(\2, \3): # FIXME \g<nline>', line)
+				line = re.sub(r'for.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)', r'for \1 in range(\2, \3): # FIXME \g<nline>', line)
 				line = re.sub(r'for.*\(.*(\w+).*:.*(\w+).*\).*\{?.*(?P<nline>\r?\n?)', r'for \1 in \2:\g<nline>', line)
-				
+
 				# Method declaration
-				print '*',line
-				raw_input('')
-				line = re.sub(r'([public |private |protected ])(.*?)(?P<fname>\w*)\(\) *{', r'def \g<fname>(self):', line)
-				line = re.sub(r'([public |private |protected ])(.*?)(?P<fname>\w*\()(?P<args>.*\)).+{', r'def \g<fname>self,\g<args>: ', line)
-				print '<<',line
-				if className:
+# 				print '*', line
+# 				raw_input('')
+				match = re.search(r'([public |private |protected ])(.*?)(?P<fname>\w*)\(\) *{', line)
+				if match:
+					line = re.sub(r'([public |private |protected ])(.*?)(?P<fname>\w*)\(\) *{', r'def \g<fname>(self):', line)
+					line = '\n' + line
+
+				match = re.search(r'([public |private |protected ])(.*?)(?P<fname>\w*\()(?P<args>.*\)).+{', line)
+				if match:
+					line = re.sub(r'([public |private |protected ])(.*?)(?P<fname>\w*\()(?P<args>.*\)).+{', r'def \g<fname>self,\g<args>: ', line)
+					line = '\n' + line
+# 				print '<<', line
+
+				if not classDefLine and className:
 					line = re.sub(className, '__init__', line)
-				
+
 				# Tokens to be completely deleted
 				line = re.sub(r'new ', '', line)
 				line = re.sub(r'void ', '', line)
@@ -87,21 +98,32 @@ def transform(javaFile, pyFile):
 				line = re.sub(r'protected ', '', line)
 				line = re.sub(r'final ', '', line)
 				line = re.sub(r'@\w+', '', line)
-				
-				# Because of structures like '} else {' or '} catch(Exception e) {' we delete the spaces after the closing bracket
-				line = re.sub(r'}\s*', '', line) 
-				
+
+				'''Because of structures like 
+					'} else {' 
+					or 
+					'} catch(Exception e) {' 
+					we delete the spaces after the closing bracket'''
+				line = re.sub(r'}\s*', '', line)
+
 				# If no thing remains, make the line blank
 				line = re.sub(r'^\s*$', '', line)
-				
+
+				# Some symbol replacements
 				line = re.sub(r'//', '#', line)
-				line = re.sub(r'/\*|\*/', '"""',  line)
+				line = re.sub(r'/\*|\*/', '"""', line)
+
+				# Some operator replacements
 				line = re.sub(r'(\w+)\+\+', r'\1 \+= 1', line)
 				line = re.sub(r'(\w+)--', r'\1 -= 1', line)
+
+				# Typical line ending/closure in Java after conditions following writing conventions (ifs, fors, whiles...)
+				line = re.sub(r'\)\s*{(.*)$', r':\1', line)
+
+				# Some reserved words
 				line = re.sub(r'this', 'self', line)
 				line = re.sub(r'true', 'True', line)
 				line = re.sub(r'false', 'False', line)
-				line = re.sub(r'\)\s*{(.*)$', r':\1', line)
 				line = re.sub(r'(\W)(this)(\W)', r'\1self\3', line)
 				line = re.sub(r'(\W)(null)(\W)', r'\1None\3', line)
 
@@ -128,13 +150,13 @@ def processFile(filename):
 	'''
 	match = re.match(r'.*\.java', filename, re.I)
 	if match:
-		# This line makes a regular expression with re.compile() to capture a java file name 
+		# This line makes a regular expression with re.compile() to capture a java file name
 		# and then sub() replaces the extension in it with "py"
 		pyFilename = re.compile(r'java$', re.I).sub('py', filename)
 		transform(filename, pyFilename)
 	else:
-		print os.path.basename(filename)+' is not a java file'
-        
+		print os.path.basename(filename) + ' is not a java file'
+
 
 def main(argv):
 	'''
@@ -147,8 +169,8 @@ def main(argv):
 		# Options and arguments processing
 		print 'processing opts'
 		opts, args = getopt.getopt(argv, "f:d:r", ["file", "dir", "recursive"])
-		print 'opts processed: '+ str(opts)
-		print 'args processed: '+str(args)
+		print 'opts processed: ' + str(opts)
+		print 'args processed: ' + str(args)
 	except getopt.GetoptError:
 		# Errors with options and arguments
 		print 'Invalid usage'
@@ -156,12 +178,16 @@ def main(argv):
 		sys.exit(-1)
 
 	# Proceeding to the code translation
-	for opt,val in opts:
+	for opt, val in opts:
 		RECURSIVE = opt in ['-r', '--recursive']
-		
-		print 'value is '+val
+
+		print 'value is ' + val
 		if opt in ['-d', '--dir']:
-			BASE_DIR = os.path.join(BASE_DIR, val)
+			isRelativeDir = val[0] != os.path.sep and val[0].isalnum()
+			if isRelativeDir:
+				BASE_DIR = os.path.join(BASE_DIR, val)
+			else:
+				BASE_DIR = val
 			processDir(BASE_DIR)
 		elif opt in ['-f', '--file']:
 			processFile(BASE_DIR, val)
