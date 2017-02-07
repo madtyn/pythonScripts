@@ -56,21 +56,21 @@ def main(argv):
 
 	try:
 		# Options and arguments processing
-		print 'processing opts'
+		print('processing opts')
 		opts, args = getopt.getopt(argv, "f:", ["file", ])
-		print 'opts processed: '+ str(opts)
-		print 'args processed: '+str(args)
+		print('opts processed: '+ str(opts))
+		print('args processed: '+str(args))
 	except getopt.GetoptError:
 		# Errors with options and arguments
-		print 'Invalid usage'
-		print 'Proper usage is findnivas -f fileName  '
+		print('Invalid usage')
+		print('Proper usage is findnivas -f fileName  ')
 		sys.exit(-1)
 
 	# Proceeding to the code translation
 	for opt,val in opts:
-		print 'value is '+val
+		print('value is '+val)
 		if opt in ['-f', '--file']:
-			print 'Entra con '+BASE_DIR
+			print('Entra con '+BASE_DIR)
 			processFile(os.path.join(BASE_DIR, val))
 		else:
 			os.chdir(BASE_DIR)

@@ -155,7 +155,7 @@ def processFile(filename):
 		pyFilename = re.compile(r'java$', re.I).sub('py', filename)
 		transform(filename, pyFilename)
 	else:
-		print os.path.basename(filename) + ' is not a java file'
+		print(os.path.basename(filename) + ' is not a java file')
 
 
 def main(argv):
@@ -167,21 +167,21 @@ def main(argv):
 
 	try:
 		# Options and arguments processing
-		print 'processing opts'
+		print('processing opts')
 		opts, args = getopt.getopt(argv, "f:d:r", ["file", "dir", "recursive"])
-		print 'opts processed: ' + str(opts)
-		print 'args processed: ' + str(args)
+		print('opts processed: ' + str(opts))
+		print('args processed: ' + str(args))
 	except getopt.GetoptError:
 		# Errors with options and arguments
-		print 'Invalid usage'
-		print 'Proper usage is java2py [-r] -f fileName | -d dirName '
+		print('Invalid usage')
+		print('Proper usage is java2py [-r] -f fileName | -d dirName ')
 		sys.exit(-1)
 
 	# Proceeding to the code translation
 	for opt, val in opts:
 		RECURSIVE = opt in ['-r', '--recursive']
 
-		print 'value is ' + val
+		print('value is ' + val)
 		if opt in ['-d', '--dir']:
 			isRelativeDir = val[0] != os.path.sep and val[0].isalnum()
 			if isRelativeDir:

@@ -16,29 +16,29 @@ def moveFiler(sourceDir, destinyDir):
 	fileList = [i for i in os.listdir(sourceDir) if os.path.isfile(os.path.join(sourceDir, i))]
 	dirList = [j for j in os.listdir(sourceDir) if os.path.isdir(os.path.join(sourceDir, j))]
 
-	print 'files: ', len(fileList), 'subdirs: ', len(dirList)
+	print('files: ', len(fileList), 'subdirs: ', len(dirList))
 
 	for actualFile in fileList:
 		# No existe fichero con el mismo nombre => copiamos
 		if not os.path.exists(os.path.join(destinyDir, actualFile)):
-			#print "mv "+os.path.join(sourceDir,actualFile)+" "+destinyDir
+			#print("mv "+os.path.join(sourceDir,actualFile)+" "+destinyDir)
 			shutil.move(os.path.join(sourceDir,actualFile),destinyDir)
 		# Existe fichero con mismo nombre, comprobamos y si no es igual => Copiamos renombrando
 		elif not filecmp.cmp(os.path.join(sourceDir,actualFile), os.path.join(destinyDir,actualFile)):
 			destinyFile=actualFile.split('.')
 			destinyFile[0]=actualFile[0]+'Bis'
 			destinyFile='.'.join(actualFile)
-			#print 'mv '+os.path.join(sourceDir,actualFile)+' '+destinyDir
+			#print('mv '+os.path.join(sourceDir,actualFile)+' '+destinyDir)
 			shutil.move(os.path.join(sourceDir,actualFile),os.path.join(destinyDir,destinyFile))
 
 	for actualDir in dirList:
-		print 'Procesando ', os.path.join(sourceDir, actualDir)
+		print('Procesando ', os.path.join(sourceDir, actualDir))
 		if not os.path.exists(os.path.join(destinyDir, actualDir)):
-			#print 'mkdir '+ os.path.join(destinyDir, actualDir)
+			#print('mkdir '+ os.path.join(destinyDir, actualDir))
 			os.mkdir(os.path.join(destinyDir, actualDir))
 
 		moveFiler(os.path.join(sourceDir,actualDir), os.path.join(destinyDir,actualDir))
-		#print 'rmtree '+os.path.join(sourceDir,actualDir)
+		#print('rmtree '+os.path.join(sourceDir,actualDir))
 		shutil.rmtree(os.path.join(sourceDir,actualDir))
 
 

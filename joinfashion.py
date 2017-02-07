@@ -134,7 +134,7 @@ def processPomFile(processFunction):
 				line = processFunction(line)
 				pomFile.write(line)
 	except IOError:
-		print 'Hubo un error al tratar de procesar el pom.xml'
+		print('Hubo un error al tratar de procesar el pom.xml')
 
 def deleteDirContent(absolutePathToDir):
 	''' Con la ruta completa/absoluta del directorio, borra todo su contenido '''
@@ -161,7 +161,7 @@ def deleteDirContent(absolutePathToDir):
 
 def showMessage(msg, title='Aviso'):
 	''' Muestra un mensaje en la terminal '''
-	print '%s: %s' % (title, msg)
+	print('%s: %s' % (title, msg))
 	
 def showMessageDialog(msg, title=''):
 	''' Muestra una ventana de dialogo con un mensaje y titulo '''
@@ -174,12 +174,12 @@ def showMessageDialog(msg, title=''):
 def execute(command):
 	''' Ejecuta en terminal un comando '''
 	error = os.system(command)
-	print '%s ha terminado con codigo %d' % (command, error)
+	print('%s ha terminado con codigo %d' % (command, error))
 	if error:
 		errorMsg = '"%s" ha fallado \nError %s' % (command,str(error))
 		processPomFile(uncommentLines)
 		showMessageDialog(errorMsg, 'Error')
-		print '\n'
+		print('\n')
 		sys.exit(error)
 
 def makePortletServices():
@@ -202,7 +202,7 @@ def deployTo(targetDir, warFilePath):
 		with zipfile.ZipFile(warFilePath, 'r') as warFile:
 			warFile.extractall(targetDir)
 	except IOError:
-		print 'Hubo un problema al desplegar %s en %s' % (warFile, targetDir)
+		print('Hubo un problema al desplegar %s en %s' % (warFile, targetDir))
 		sys.exit(-2)
 
 def deployPortlets():
@@ -232,7 +232,7 @@ def main(argv):
 	try:
 		opts, __ = getopt.getopt(argv, "spt", ["services", "portlets", "themes"])
 	except getopt.GetoptError:
-		print 'Uso invalido'
+		print('Uso invalido')
 		sys.exit(-1)
 		
 	successMsg=''
@@ -264,7 +264,7 @@ def main(argv):
 	
 
 	showMessageDialog(successMsg, 'Tarea terminada')
-	print '\n'
+	print('\n')
 
 if __name__ == "__main__":
 	main(sys.argv[1:])

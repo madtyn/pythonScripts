@@ -8,13 +8,13 @@ import sys
 filename = ''
 
 if len(sys.argv) > 2:
-	print 'Sintaxis incorrecta. Debe usar el programa del siguiente modo:'
-	print 'cuentaPalabras.py [fichero] \n'
-	print 'o bien\n'
-	print 'python cuentaPalabras.py [fichero]\n'
-	print '(Los corchetes ([]) indican la opcionalidad de su contenido)'
+	print('Sintaxis incorrecta. Debe usar el programa del siguiente modo:')
+	print('cuentaPalabras.py [fichero] \n')
+	print('o bien\n')
+	print('python cuentaPalabras.py [fichero]\n')
+	print('(Los corchetes ([]) indican la opcionalidad de su contenido)')
 elif len(sys.argv) == 1:
-	filename = raw_input('Introduzca el nombre exacto del fichero a procesar: ')
+	filename = input('Introduzca el nombre exacto del fichero a procesar: ')
 else:
 	filename = sys.argv[1]
 	
@@ -26,7 +26,7 @@ with open(filename, 'r') as file:
 	linea=linea.replace('\n', '')
 	while linea != '':
 		for palabra in linea.split():
-			if palabra not in dicc.keys():
+			if palabra not in list(dicc.keys()):
 				dicc[palabra] = 1
 			else:
 				dicc[palabra] += 1
@@ -34,7 +34,7 @@ with open(filename, 'r') as file:
 
 total = sum(dicc.values())
 
-listaOrdenada = sorted(dicc.items(), key=operator.itemgetter(1))
+listaOrdenada = sorted(list(dicc.items()), key=operator.itemgetter(1))
 listaOrdenada.reverse()
 
 

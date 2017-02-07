@@ -31,32 +31,32 @@ def random(size=16):
 # Habria sido mejor incluir cada funcionalidad propia de cada funcion en la propia funcion
 def hexconv(func):
 	def f(*args, **kw):
-		print
+		print()
 		if 'encrypt'==func.__name__:
 			r=func(*args, **kw)
-			print 'Resultado: Texto encriptado hexadecimal:\n'+r.encode('hex')
+			print('Resultado: Texto encriptado hexadecimal:\n'+r.encode('hex'))
 		elif 'decrypt'==func.__name__:
-			print 'Entrada: Texto  encriptado hexadecimal:'
-			if kw.has_key('cipher'):
-				print kw['cipher'].encode('hex')
+			print('Entrada: Texto  encriptado hexadecimal:')
+			if 'cipher' in kw:
+				print(kw['cipher'].encode('hex'))
 			elif len(args)>=2:
-				print args[1].encode('hex')
+				print(args[1].encode('hex'))
 			r=func(*args, **kw)
-		print
+		print()
 		return r
 	return f
 
 @hexconv
 def encrypt(key, msg):
 	c = strxor(key, msg)
-	print
+	print()
 	return c
 
 @hexconv
 def decrypt(key, cipher):
 	p = strxor(key, cipher)
-	print
-	print p
+	print()
+	print(p)
 
 def	xorCompare(i=0,j=0, c1=' ', c2=' ', fast=True):
 	if c1==' ' and c2==' ':
@@ -68,7 +68,7 @@ def	xorCompare(i=0,j=0, c1=' ', c2=' ', fast=True):
 	else: # Caracter por caracter
 		result=''
 		for x,y in zip(c1, c2):
-			print str(x)+ '(+)'+str(y)+' = '+strxor(x,y)
+			print(str(x)+ '(+)'+str(y)+' = '+strxor(x,y))
 			result += strxor(x,y)
 		return result
 			

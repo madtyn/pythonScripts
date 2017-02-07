@@ -17,7 +17,7 @@ def findNext(i):
 		a = (2*x + 5) % P[0]
 		b= (3*(seeds[i] ^ x) + 7) % P[0]
 		if (a ^ b )== seeds[i+1]:
-			print "(",a,",",b,")"
+			print("(",a,",",b,")")
 			return
 
 class WeakPrng(object):
@@ -26,7 +26,7 @@ class WeakPrng(object):
         self.x = random.randint(0, p)
         self.y = random.randint(0, p)
    
-    def next(self):
+    def __next__(self):
         # x_{i+1} = 2*x_{i}+5  (mod p)
         self.x = (2*self.x + 5) % self.p
 
@@ -39,4 +39,4 @@ class WeakPrng(object):
 
 prng = WeakPrng(P)
 for i in range(1, 10):
-  print "output #%d: %d" % (i, prng.next())
+  print("output #%d: %d" % (i, next(prng)))
