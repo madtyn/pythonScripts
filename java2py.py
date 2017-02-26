@@ -1,13 +1,10 @@
 #!/usr/bin/python3
 
 '''
-TODO Revisar el caso de que sea interface, y si lo es, detectar los metodos de distinta manera
 TODO ArrayList<\b\w*\b> deberia sustituirse por []
 TODO Mejorar procesamiento de args en metodos
-TODO Corregir el problema de los alias en los for(Object x : objects) { 
-TODO bug con las sentencias } else {
-TODO .equals por ' == '
 Ej: line = re.sub('\b\w*\b \b(\w*)\b[,\)]', '\1,', line)
+TODO .equals por ' == '
 
 TODO en declaraciones de variables tambien se cumple:
 \b(?P<tipo>\w*)\b \b\w*\b; 
@@ -61,7 +58,6 @@ def transform(javaFile, pyFile):
 				interfaceDefLine = re.search(r'interface (?P<name>\w+)', line)
 				if interfaceDefLine:
 					interfaceName = interfaceDefLine.group('name')
-					interfaceName = re.compile(interfaceName)
 				line = re.sub(r'(.*?)\w* interface (?P<name>\w+)(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
 
 				# Adds the parents
@@ -100,14 +96,20 @@ def transform(javaFile, pyFile):
 					if re.search(r'=',line):
 						isMethod = False
 						isMethodArgs = False
-					elif not re.search(r';$', line) or interfaceName:
-						isMethod = re.search(r'(.*?)(?P<fname>\w*)\(\) *{', line)
-						isMethodArgs = re.search(r'(.*?)(?P<fname>\w*\()(?P<args>.*\)).+{', line)
+					elif not re.search(r';$', line):
+						isMethod = bool(re.search(r'(.*?)(?P<fname>\w*)\(\) *{', line))
+						isMethodArgs = bool(re.search(r'(.*?)(?P<fname>\w*\()(?P<args>.*\)).+{', line))
+					elif interfaceName:
+						isMethod = bool(re.search(r'(.*?)(?P<fname>\w*)\(\) *;', line))
+						isMethodArgs = bool(re.search(r'(.*?)(?P<fname>\w*\()(?P<args>.*\)).+;', line))
 						
 					if isMethod:
 						print('IS_METHOD')
 						line = re.sub(r'(.*?)(?P<fname>\w*)\(\) *{', r'\1def '+prefix+r'\g<fname>(self):', line)
 						line = re.sub(r'\w* def', r'def', line)
+						if interfaceName:
+							spaces = re.search(r'^\s*', line)
+							line += os.linesep + spaces + '\tpass'
 						if isStatic:
 							re.search('(?P<name>\s+)', line).group()
 							line = '@staticmethod\n' + line
@@ -149,16 +151,16 @@ def transform(javaFile, pyFile):
 				line = re.sub(r'!=\s*null', r'', line)
 				line = re.sub(r'==\s*null', r'is None', line)
 				line = re.sub(r'!\s*\(', r'not (', line)
-				line = re.sub(r'!\s*(\w*)', r'not \1', line)
+				line = re.sub(r'!\s*\b(\w*)\b', r'not \1', line)
 				line = re.sub(r'&&', 'and', line)
 				line = re.sub(r'\|\|', 'or', line)
 				line = re.sub(r'while\s*\((?P<cond>.*)\).*{', r'while \g<cond>: #TODO Check condition', line)
 				line = re.sub(r'else if\s*\((?P<cond>.*)\).*{', r'elif \g<cond>: #TODO Check condition', line)
 				line = re.sub(r'if\s*\((?P<cond>.*)\).*{', r'if \g<cond>: #TODO Check condition', line)
-				line = re.sub(r'}?.*else.*{?', r'else:', line)
+				line = re.sub(r'(\s*)}?.*else.*{?', r'\1else:', line)
 				line = re.sub(r'for.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)', r'for \1 in range(\2, \3): # FIXME \g<nline>', line)
 				line = re.sub(r'for.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<=\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)', r'for \1 in range(\2, \3+1): # FIXME \g<nline>', line)
-				line = re.sub(r'for.*\(.*(\w+).*:.*(\w+).*\).*\{?.*(?P<nline>\r?\n?)', r'for \1 in \2: #TODO Check condition\g<nline> ' , line)
+				line = re.sub(r'for.*\(.*\b(\w+)\b.*:.*\b(\w+)\b.*\).*\{?.*(?P<nline>\r?\n?)', r'for \1 in \2: #TODO Check condition\g<nline> ' , line)
 
 				line = re.sub(r'\bthrow\b', r'raise', line)
 				line = re.sub(r'try\s*{', 'try:', line)
