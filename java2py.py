@@ -92,7 +92,7 @@ def transform(javaFile, pyFile):
 					interfaceName = interfaceDefLine.group('name')
 					line = re.sub(r'(.*?)\w* interface \b(?P<name>\w+)\b(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
 					
-				varMatch =re.search(varPattern, line)
+				varMatch = re.search(varPattern, line)
 				if varMatch:
 					print('IS_VARIABLE')
 					space = varMatch.group('space')
@@ -134,31 +134,6 @@ def transform(javaFile, pyFile):
 						if interfaceName or 'abstract' in fmodifs:
 							line += os.linesep + space + '\tpass'
 					
-				# Declaration
-				'''
-				declaration = False
-				declaration = re.search(r'\bpublic\b|\bprivate\b|\bprotected\b', line)
-				if declaration:
-					if isMethod:
-						line = re.sub(r'(.*?)(?P<fname>\b\w+\b)\(\) *{', r'\1def '+prefix+r'\g<fname>(self):', line)
-						line = re.sub(r'\w* def', r'def', line)
-					else:
-						line = re.sub(r'(.*)\[\](.*=)', r'\1\3 =', line)
-						
-						line = re.sub(r'\b\w*\b\s*\b(\w+)\b\s*=(.*);',prefix+r'\1 =\2',line)
-						line = re.sub(r'\b\w*\b\s*\b(\w+)\b\s*;', prefix+r'\1 = None',line)
-				
-				'''	
-				# Type erasure
-				'''
-				line = re.sub(r'\bString \b(\w+)\b', r'\1', line)
-				line = re.sub(r'\bint (\b\w+\b)', r'\1', line)
-				line = re.sub(r'\bInteger \b(\w+)\b', r'\1', line)
-				line = re.sub(r'\b[Dd]ouble \b(\w+)\b', r'\1', line)
-				line = re.sub(r'\b[Ff]loat \b(\w+)\b', r'\1', line)
-				line = re.sub(r'\b[Ll]ong \b(\w+)\b', r'\1', line)
-				line = re.sub(r'\b[Bb]oolean \b(\w+)\b', r'\1', line)
-				'''
 				line = re.sub(r'new ArrayList(<\b\w+\b>)?\(.*\)?', r'[]',line)
 				line = re.sub(r'\bList(<\b\w*\b>)', r'',line)
 
