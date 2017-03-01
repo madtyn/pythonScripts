@@ -27,6 +27,13 @@ def quickTask(line, regex, replacement=None, file=None):
 		file.write(line)
 	return bool(match)
 
+def processArgs(args):
+    #TODO Testear
+	processed=''
+	if args and len(args):
+		processed=args[:]
+		processed = re.sub(r'(((\b\w+\b\s+)+))(?P<arg>\b\w+,?)', r'\g<arg>', processed) # TODO Meter '*' en tipo array o List/arrayList
+	return processed
 
 def transform(javaFile, pyFile):
 	'''
@@ -87,9 +94,20 @@ def transform(javaFile, pyFile):
 				if interfaceDefLine:
 					interfaceName = interfaceDefLine.group('name')
 					line = re.sub(r'(.*?)\w* interface \b(?P<name>\w+)\b(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
+				
+				consMatch = None
+				if className:
+					consMatch = re.search(r'\b'+className+r'\b\((?P<args>.*)\)\s*\}?', line)	
+                    #TODO Revisar constructor
 					
 				varMatch = re.search(varPattern, line)
-				if varMatch:
+				funMatch = re.search(funPattern, line)
+				
+				if consMatch:
+					args = processArgs(consMatch.group('args'))
+					line = re.sub(r'\b'+className+r'\b\((?P<args>.*)\)\s*\}?', r'__init__(self,'+args+'):', line)
+                    #TODO Revisar constructor
+				elif varMatch:
 					space = varMatch.group('space')
 					priv = varMatch.group('priv').rstrip() if varMatch.group('priv') else ''
 
@@ -104,12 +122,7 @@ def transform(javaFile, pyFile):
 					line = re.sub(r'^([^=]*);', r'\1 = None;', line)
 					line = re.sub(varPattern, space + vname + r' \g<value>', line)
 
-				funMatch = re.search(funPattern, line)
-				if not classDefLine and not interfaceDefLine:
-					if className:
-						line = re.sub(r'\b'+className+r'\b\(', '__init__(', line)
-						if '__init__' in line:
-							funMatch = None
+				elif not classDefLine and not interfaceDefLine:
 					
 					if funMatch:
 						space = funMatch.group('space')
@@ -120,8 +133,7 @@ def transform(javaFile, pyFile):
 						fname = PRIVACY_PREFIXES.get(priv, '') + funMatch.group('fname')
 						replacements[funMatch.group('fname')] = fname
 
-						args = funMatch.group('fargs')
-						args = re.sub(r'(((\b\w+\b\s+)+))(?P<arg>\b\w+,?)', r'\g<arg>', args) # TODO Meter '*' en tipo array o List/arrayList
+						args = processArgs(funMatch.group('fargs'))
 						args = args if 'static' in fmodifs else 'self,' + args
 						 
 						line = re.sub(funPattern, space+r'def ' + fname + r'('+args+'):', line)
