@@ -4,18 +4,6 @@
 TODO procesar argumentos de constructor __init__
 TODO Implementar con un diccionario un sistema de reemplazado de todas las variables locales
 TODO Tipos de datos con <.*>\[.*\]
-
-TODO en declaraciones de variables tambien se cumple:
-\b(?P<tipo>\w*)\b \b\w*\b; 
-o bien
-\b(?P<tipo>\w*)\b \b\w*\b = (?P<valor); 
-TODO Detectar mejor declaracion de variables 
-
-r'(?P<priv>\b(public\b|private\b|protected\b)?)?\s*(?P<vmodifs>\b(static\s*|final\s*|volatile\s*)+)?\b(?P<type>\w+)\s*\b(?P<vname>\w+)\s*(=.*)?;'
-
-TODO Detectar mejor declaracion de metodos
-r'(?P<priv>\b(public\b|private\b|protected\b)?)?\s*(?P<fmodifs>\b(abstract\s*|static\s*|synchronized\s*|native\s*)+)?\b(?P<type>\w+(<\w*?>)?)\s*\b(?P<fname>\w+)\((?P<fargs>.*)\)'
-r'(?P<modifs>\b(public\s*|private\s*|protected\s*|static\s*|abstract\s*|synchronized\s*|native\s*)*)\b(?P<type>\w+)\s*\b(?P<fname>\w+)\((?P<fargs>.*)\)'
 '''
 
 import re
@@ -25,7 +13,14 @@ import getopt
 RECURSIVE = False
 PRIVACY_PREFIXES = {'private':'__', 'protected':'_', 'public':''}
 
-def quickTask(regex, replacement=None, line=None, file=None):
+def quickTask(line, regex, replacement=None, file=None):
+	'''
+	
+	:param line: the line for processing
+	:param regex: the regular expression to find or replace
+	:param replacement: the replacement for the regex if found
+	:param file: the file to write to if there is a match
+	'''
 	match = re.search(regex, line)
 	if match and line and file:
 		line = re.sub(regex, replacement, line)
@@ -39,12 +34,13 @@ def transform(javaFile, pyFile):
 	'''
 	with open(javaFile, 'r') as jFile:
 		with open(pyFile, 'w+') as pFile:
+			replacements = {}
 			privModifsExp=r'\s*(?P<priv>((\bpublic\b\s*|\bprivate\b\s*|\bprotected\b\s*))+)?'
 			vmodifsExp = privModifsExp+r'(?P<vmodifs>\b(static\s*|final\s*|transient\s*|volatile\s*)+)?'
 			fmodifsExp = privModifsExp+r'(?P<fmodifs>\b(abstract\s*|static\s*|synchronized\s*|native\s*)+)?'
 			datatypeExp = r'\b(?P<type>\w+)(<.*?>)?\[?\]?\s*'
 			varDecExp = r'^(?P<space>\s*)'+vmodifsExp+datatypeExp+r'\b(?P<vname>\w+)\s*(?P<value>=.*)?;'
-			funDecExp = r'^(?P<space>\s*)<?[^=]*?>?\s*'+fmodifsExp+datatypeExp+r'\b(?P<fname>\w+)\((?P<fargs>.*)\)'
+			funDecExp = r'^(?P<space>\s*)<?[^=]*?>?\s*'+fmodifsExp+datatypeExp+r'\b(?P<fname>\w+)\((?P<fargs>.*)\)\s*\{?'
 			
 			# Esto es lo que usaremos en las iteraciones
 			varPattern = re.compile(varDecExp)
@@ -57,22 +53,22 @@ def transform(javaFile, pyFile):
 				line = line.rstrip()
 				line = line + os.linesep
 				
-				if quickTask(r'^(\s*)package', r'\1#package', line, pFile):
+				if quickTask(line, r'^(\s*)package', r'\1#package', pFile):
 					continue
 
-				if quickTask(r'^(\s*)import', r'\1#import', line, pFile):
+				if quickTask(line, r'^(\s*)import', r'\1#import', pFile):
 					continue
 				
-				if quickTask(r'//', r'#', line, pFile):
+				if quickTask(line, r'//', r'#', pFile):
 					continue
 				
-				if quickTask(r'/\*|\*/', r'"""', line, pFile):
+				if quickTask(line, r'/\*|\*/', r'"""', pFile):
 					continue
 
-				if quickTask(r'^\s*}\s*\r?\n'):
+				if quickTask(line, r'^\s*}\s*\r?\n'):
 					continue
 				
-				if quickTask(r'^\s*\r?\n'):
+				if quickTask(line, r'^\s*\r?\n'):
 					continue
 
 				# CLASS DECLARATION
@@ -94,13 +90,13 @@ def transform(javaFile, pyFile):
 					
 				varMatch = re.search(varPattern, line)
 				if varMatch:
-					print('IS_VARIABLE')
 					space = varMatch.group('space')
 					priv = varMatch.group('priv').rstrip() if varMatch.group('priv') else ''
 
 					vmodifs = varMatch.group('vmodifs')
 					vtype = varMatch.group('type')
 					vname = PRIVACY_PREFIXES.get(priv, '') + varMatch.group('vname')
+					replacements[varMatch.group('vname')] = vname
 					
 					#Si es array, lo convertimos a una inicializacion a [] con ; de Java
 					line = re.sub(r'(.*)\[\]([^=]*);', r'\1\2 = [];', line)
@@ -116,23 +112,24 @@ def transform(javaFile, pyFile):
 							funMatch = None
 					
 					if funMatch:
-						print('IS_METHOD')
 						space = funMatch.group('space')
 						priv = funMatch.group('priv').rstrip() if funMatch.group('priv') else ''
 
 						fmodifs = funMatch.group('fmodifs').rstrip() if funMatch.group('fmodifs') else ''
 						ftype = funMatch.group('type')
 						fname = PRIVACY_PREFIXES.get(priv, '') + funMatch.group('fname')
+						replacements[funMatch.group('fname')] = fname
 
 						args = funMatch.group('fargs')
 						args = re.sub(r'(((\b\w+\b\s+)+))(?P<arg>\b\w+,?)', r'\g<arg>', args) # TODO Meter '*' en tipo array o List/arrayList
 						args = args if 'static' in fmodifs else 'self,' + args
 						 
-						line = re.sub(funPattern, space+r'def ' + fname + r'('+args+')', line)
+						line = re.sub(funPattern, space+r'def ' + fname + r'('+args+'):', line)
 						if 'static' in fmodifs:
 							line = space +'@staticmethod\n' + line
 						if interfaceName or 'abstract' in fmodifs:
 							line += os.linesep + space + '\tpass'
+						line = os.linesep + line
 					
 				line = re.sub(r'new ArrayList(<\b\w+\b>)?\(.*\)?', r'[]',line)
 				line = re.sub(r'\bList(<\b\w*\b>)', r'',line)
@@ -149,9 +146,9 @@ def transform(javaFile, pyFile):
 				line = re.sub(r'\belse if\b\s*\((?P<cond>.*)\).*{', r'elif \g<cond>: #TODO Check condition', line)
 				line = re.sub(r'if\s*\((?P<cond>.*)\).*{', r'if \g<cond>: #TODO Check condition', line)
 				line = re.sub(r'(\s*)}?.*\belse\b.*{?', r'\1else:', line)
-				line = re.sub(r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)', r'for \1 in range(\2, \3): # FIXME \g<nline>', line)
-				line = re.sub(r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<=\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)', r'for \1 in range(\2, \3+1): # FIXME \g<nline>', line)
-				line = re.sub(r'\bfor\b.*\(.*\b(\w+)\b.*:.*\b(\w+)\b.*\).*\{?.*(?P<nline>\r?\n?)', r'for \1 in \2: #TODO Check condition\g<nline> ' , line)
+				line = re.sub(r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?', r'for \1 in range(\2, \3): # FIXME \g<nline>', line)
+				line = re.sub(r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<=\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?', r'for \1 in range(\2, \3+1): # FIXME \g<nline>', line)
+				line = re.sub(r'\bfor\b.*\(.*\b(\w+)\b.*:.*\b(\w+)\b.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?', r'for \1 in \2: #TODO Check condition\g<nline> ' , line)
 
 				line = re.sub(r'\bthrow\b', r'raise', line)
 				line = re.sub(r'\btry\b\s*{', 'try:', line)
@@ -196,6 +193,9 @@ def transform(javaFile, pyFile):
 				line = re.sub(r'\bfalse\b', 'False', line)
 				line = re.sub(r'(\W)\b(this)\b(\W)', r'\1self\3', line)
 				line = re.sub(r'(\W)\b(null)\b(\W)', r'\1None\3', line)
+				
+				for k,v in replacements.items():
+					line = re.sub(r'\b'+k+r'\b', v, line)
 
 				pFile.write(line)
 
