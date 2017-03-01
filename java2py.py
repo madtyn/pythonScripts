@@ -1,23 +1,37 @@
 #!/usr/bin/python3
 
 '''
-TODO Detectar mejor declaracion de variables 
-	(public |private |protected |final |static )*(?P<type>\w+ )(?P<var>\w+)\s*=(.*);
-	(public |private |protected |final |static )*(?P<type>\w+ )(?P<var>\w+)\s*;
+TODO procesar argumentos de constructor __init__
 TODO Implementar con un diccionario un sistema de reemplazado de todas las variables locales
+TODO Tipos de datos con <.*>\[.*\]
 
 TODO en declaraciones de variables tambien se cumple:
 \b(?P<tipo>\w*)\b \b\w*\b; 
 o bien
 \b(?P<tipo>\w*)\b \b\w*\b = (?P<valor); 
-'''
+TODO Detectar mejor declaracion de variables 
 
+r'(?P<priv>\b(public\b|private\b|protected\b)?)?\s*(?P<vmodifs>\b(static\s*|final\s*|volatile\s*)+)?\b(?P<type>\w+)\s*\b(?P<vname>\w+)\s*(=.*)?;'
+
+TODO Detectar mejor declaracion de metodos
+r'(?P<priv>\b(public\b|private\b|protected\b)?)?\s*(?P<fmodifs>\b(abstract\s*|static\s*|synchronized\s*|native\s*)+)?\b(?P<type>\w+(<\w*?>)?)\s*\b(?P<fname>\w+)\((?P<fargs>.*)\)'
+r'(?P<modifs>\b(public\s*|private\s*|protected\s*|static\s*|abstract\s*|synchronized\s*|native\s*)*)\b(?P<type>\w+)\s*\b(?P<fname>\w+)\((?P<fargs>.*)\)'
+'''
 
 import re
 import sys, os
 import getopt
 
 RECURSIVE = False
+PRIVACY_PREFIXES = {'private':'__', 'protected':'_', 'public':''}
+
+def quickTask(regex, replacement=None, line=None, file=None):
+	match = re.search(regex, line)
+	if match and line and file:
+		line = re.sub(regex, replacement, line)
+		file.write(line)
+	return bool(match)
+
 
 def transform(javaFile, pyFile):
 	'''
@@ -25,129 +39,128 @@ def transform(javaFile, pyFile):
 	'''
 	with open(javaFile, 'r') as jFile:
 		with open(pyFile, 'w+') as pFile:
+			privModifsExp=r'\s*(?P<priv>((\bpublic\b\s*|\bprivate\b\s*|\bprotected\b\s*))+)?'
+			vmodifsExp = privModifsExp+r'(?P<vmodifs>\b(static\s*|final\s*|transient\s*|volatile\s*)+)?'
+			fmodifsExp = privModifsExp+r'(?P<fmodifs>\b(abstract\s*|static\s*|synchronized\s*|native\s*)+)?'
+			datatypeExp = r'\b(?P<type>\w+)(<.*?>)?\[?\]?\s*'
+			varDecExp = r'^(?P<space>\s*)'+vmodifsExp+datatypeExp+r'\b(?P<vname>\w+)\s*(?P<value>=.*)?;'
+			funDecExp = r'^(?P<space>\s*)<?[^=]*?>?\s*'+fmodifsExp+datatypeExp+r'\b(?P<fname>\w+)\((?P<fargs>.*)\)'
+			
+			# Esto es lo que usaremos en las iteraciones
+			varPattern = re.compile(varDecExp)
+			funPattern = re.compile(funDecExp)
+			
 			className = None
 			interfaceName = None
 			for oldLine in jFile:
 				line = oldLine[:]
-				line.rstrip()
+				line = line.rstrip()
+				line = line + os.linesep
 				
-				match = re.search(r'^(\s*)package', line)
-				if match:
-					line = re.sub(r'^(\s*)package', r'\1#package', line)
-					pFile.write(line)
+				if quickTask(r'^(\s*)package', r'\1#package', line, pFile):
 					continue
 
-				match = re.search(r'^(\s*)import', line)
-				if match:
-					line = re.sub(r'^(\s*)import', r'\1#import', line)
-					pFile.write(line)
+				if quickTask(r'^(\s*)import', r'\1#import', line, pFile):
 					continue
 				
-				match  = re.search(r'^\s*}\s*$', line)
-				if match:
-					line = re.sub(r'}', r'', line)
-					pFile.write(line)
+				if quickTask(r'//', r'#', line, pFile):
+					continue
+				
+				if quickTask(r'/\*|\*/', r'"""', line, pFile):
+					continue
+
+				if quickTask(r'^\s*}\s*\r?\n'):
+					continue
+				
+				if quickTask(r'^\s*\r?\n'):
 					continue
 
 				# CLASS DECLARATION
 				classDefLine = re.search(r'\bclass (?P<name>\w+)', line)
 				if classDefLine:
 					className = classDefLine.group('name')
-				line = re.sub(r'(.*?)\w* class \b(?P<name>\w+)\b(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
+					line = re.sub(r'(.*?)\w* class \b(?P<name>\w+)\b(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
+					# Adds the parents
+					line = re.sub(r'\(\).*\bextends (?P<parents>([ .\w]*))\s*?(?P<nline>\r?\n?)', r'(\g<parents>):\g<nline>', line)	
+					# Adds the interfaces if there were no parents
+					line = re.sub(r'\(\).*\bimplements (?P<contracts>(.*))', r'(\g<contracts>)', line)
+					# Adds the interfaces if there were parents
+					line = re.sub(r'\((?P<parents>.+?).*\bimplements (?P<contracts>\S*)\s*', r'(\g<parents>,\g<contracts>', line)
 				
 				interfaceDefLine = re.search(r'\binterface (?P<name>\w+)', line)
 				if interfaceDefLine:
 					interfaceName = interfaceDefLine.group('name')
-				line = re.sub(r'(.*?)\w* interface \b(?P<name>\w+)\b(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
+					line = re.sub(r'(.*?)\w* interface \b(?P<name>\w+)\b(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
+					
+				varMatch =re.search(varPattern, line)
+				if varMatch:
+					print('IS_VARIABLE')
+					space = varMatch.group('space')
+					priv = varMatch.group('priv').rstrip() if varMatch.group('priv') else ''
 
-				# Adds the parents
-				line = re.sub(r'\(\).*\bextends (?P<parents>([ .\w]*))\s*?(?P<nline>\r?\n?)', r'(\g<parents>):\g<nline>', line)
+					vmodifs = varMatch.group('vmodifs')
+					vtype = varMatch.group('type')
+					vname = PRIVACY_PREFIXES.get(priv, '') + varMatch.group('vname')
+					
+					#Si es array, lo convertimos a una inicializacion a [] con ; de Java
+					line = re.sub(r'(.*)\[\]([^=]*);', r'\1\2 = [];', line)
+					# Si no es array, inicializamos a None
+					line = re.sub(r'^([^=]*);', r'\1 = None;', line)
+					line = re.sub(varPattern, space + vname + r' \g<value>', line)
 
-				# Adds the interfaces if there were no parents
-				line = re.sub(r'\(\).*\bimplements (?P<contracts>(.*))', r'(\g<contracts>)', line)
-				# Adds the interfaces if there were parents
-				line = re.sub(r'\((?P<parents>.+?).*\bimplements (?P<contracts>\S*)\s*', r'(\g<parents>,\g<contracts>', line)
+				funMatch = re.search(funPattern, line)
+				if not classDefLine and not interfaceDefLine:
+					if className:
+						line = re.sub(r'\b'+className+r'\b\(', '__init__(', line)
+						if '__init__' in line:
+							funMatch = None
+					
+					if funMatch:
+						print('IS_METHOD')
+						space = funMatch.group('space')
+						priv = funMatch.group('priv').rstrip() if funMatch.group('priv') else ''
 
-				if not classDefLine and className:
-					pattern='\b'+className
-					line = re.sub(r'\b'+className+r'\b\(', '__init__(', line)
+						fmodifs = funMatch.group('fmodifs').rstrip() if funMatch.group('fmodifs') else ''
+						ftype = funMatch.group('type')
+						fname = PRIVACY_PREFIXES.get(priv, '') + funMatch.group('fname')
 
+						args = funMatch.group('fargs')
+						args = re.sub(r'(((\b\w+\b\s+)+))(?P<arg>\b\w+,?)', r'\g<arg>', args) # TODO Meter '*' en tipo array o List/arrayList
+						args = args if 'static' in fmodifs else 'self,' + args
+						 
+						line = re.sub(funPattern, space+r'def ' + fname + r'('+args+')', line)
+						if 'static' in fmodifs:
+							line = space +'@staticmethod\n' + line
+						if interfaceName or 'abstract' in fmodifs:
+							line += os.linesep + space + '\tpass'
+					
 				# Declaration
+				'''
 				declaration = False
 				declaration = re.search(r'\bpublic\b|\bprivate\b|\bprotected\b', line)
 				if declaration:
-					print('DECLARATION: '+line)
-					isFinal = False
-					isStatic = False
-					prefix = ''
-					privacy = ''
-					privacy = declaration.group()
-					if privacy == 'private':
-						prefix = '__'
-					elif privacy == 'protected':
-						prefix = '_'
-					isStatic = re.search(r'static ', line)
-					if isStatic:
-						line = re.sub(r'static ', '', line)
-					isFinal = re.search(r'final ', line)
-					if isFinal:
-						line = re.sub(r'final ', '', line)
-					
-					if re.search(r'=',line):
-						isMethod = False
-						isMethodArgs = False
-					elif not re.search(r';$', line):
-						isMethod = bool(re.search(r'(.*?)\b(?P<fname>\w+)\b\(\) *{', line))
-						isMethodArgs = bool(re.search(r'(.*?)(?P<fname>\b\w+\b\()(?P<args>.*\)).+{', line))
-					elif interfaceName:
-						isMethod = bool(re.search(r'(.*?)(?P<fname>\b\w+\b)\(\) *;', line))
-						isMethodArgs = bool(re.search(r'(.*?)(?P<fname>\b\w+\b\()(?P<args>.*\)).+;', line))
-						
 					if isMethod:
-						print('IS_METHOD')
 						line = re.sub(r'(.*?)(?P<fname>\b\w+\b)\(\) *{', r'\1def '+prefix+r'\g<fname>(self):', line)
 						line = re.sub(r'\w* def', r'def', line)
-						if interfaceName:
-							spaces = re.search(r'^\s*', line)
-							line += os.linesep + spaces + '\tpass'
-						if isStatic:
-							re.search('(?P<name>\s+)', line).group()
-							line = '@staticmethod\n' + line
-						line = os.linesep + line
-					elif isMethodArgs:
-						print('IS_METHOD')
-						line = re.sub(r'(.*?)(?P<fname>\b\w+\b\()(?P<args>.*\)).+{', r'\1def '+prefix+r'\g<fname>self,\g<args>: ', line)
-						line = re.sub('\b\w+\b\s+\b(\w+)\b[,\)]', '\1,', line)
-						line = re.sub(r'\w* def', r'def', line)
-						if isStatic:
-							re.search('(?P<name>\s+)', line).group()
-							line = '@staticmethod\n' + line
-						line = os.linesep + line
 					else:
-						print('IS_VARIABLE')
-						#Si es array
-						line = re.sub(r'(.*)(\[\](.*);)', r'\1\3 = []', line)
 						line = re.sub(r'(.*)\[\](.*=)', r'\1\3 =', line)
 						
 						line = re.sub(r'\b\w*\b\s*\b(\w+)\b\s*=(.*);',prefix+r'\1 =\2',line)
 						line = re.sub(r'\b\w*\b\s*\b(\w+)\b\s*;', prefix+r'\1 = None',line)
 				
-					line = re.sub(r'\bpublic ', '', line)
-					line = re.sub(r'\bprivate ', '', line)
-					line = re.sub(r'\bprotected ', '', line)
-				
-					# Type erasure
-					line = re.sub(r'\bString \b(\w+)\b', r'\1', line)
-					line = re.sub(r'\bint (\b\w+\b)', r'\1', line)
-					line = re.sub(r'\bInteger \b(\w+)\b', r'\1', line)
-					line = re.sub(r'\b[Dd]ouble \b(\w+)\b', r'\1', line)
-					line = re.sub(r'\b[Ff]loat \b(\w+)\b', r'\1', line)
-					line = re.sub(r'\b[Ll]ong \b(\w+)\b', r'\1', line)
-					line = re.sub(r'\b[Bb]oolean \b(\w+)\b', r'\1', line)
-					
+				'''	
+				# Type erasure
+				'''
+				line = re.sub(r'\bString \b(\w+)\b', r'\1', line)
+				line = re.sub(r'\bint (\b\w+\b)', r'\1', line)
+				line = re.sub(r'\bInteger \b(\w+)\b', r'\1', line)
+				line = re.sub(r'\b[Dd]ouble \b(\w+)\b', r'\1', line)
+				line = re.sub(r'\b[Ff]loat \b(\w+)\b', r'\1', line)
+				line = re.sub(r'\b[Ll]ong \b(\w+)\b', r'\1', line)
+				line = re.sub(r'\b[Bb]oolean \b(\w+)\b', r'\1', line)
+				'''
 				line = re.sub(r'new ArrayList(<\b\w+\b>)?\(.*\)?', r'[]',line)
 				line = re.sub(r'\bList(<\b\w*\b>)', r'',line)
-				line = re.sub(r';', '', line)
 
 				# Control structures
 				line = re.sub(r'(\w+).equals\((.*)\)', r'\1 == \2', line)
@@ -173,14 +186,9 @@ def transform(javaFile, pyFile):
 				line = re.sub(r'Integer.valueOf\((.+)\)', r'int(\1)', line)
 				line = re.sub(r'(\w+).toString()', r'str(\1)', line)
 
-				# Method declaration
-# 				print '*', line
-# 				raw_input('')
-# 				print '<<', line
 				# Comments
+				line = re.sub(r';', '', line)
 				line = re.sub(r'@param', ':param', line)
-				line = re.sub(r'//', '#', line)
-				line = re.sub(r'/\*|\*/', '"""', line)
 
 				# Some operator replacements
 				line = re.sub(r'(\w+)\+\+', r'\1 += 1', line)
