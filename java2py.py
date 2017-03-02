@@ -13,22 +13,25 @@ import getopt
 RECURSIVE = False
 PRIVACY_PREFIXES = {'private':'__', 'protected':'_', 'public':''}
 
-def quickTask(line, regex, replacement=None, file=None):
+def quickTask(line, regex, replacement=None, foutput=None):
 	'''
 	
 	:param line: the line for processing
 	:param regex: the regular expression to find or replace
 	:param replacement: the replacement for the regex if found
-	:param file: the file to write to if there is a match
+	:param foutput: the foutput to write to if there is a match
 	'''
 	match = re.search(regex, line)
-	if match and line and file:
+	if match and line and foutput:
 		line = re.sub(regex, replacement, line)
-		file.write(line)
+		foutput.write(line)
 	return bool(match)
 
 def processArgs(args):
-    #TODO Testear
+	'''
+	Process the arguments for the Java method removing modifiers and types
+	:param args: the args to be processed
+	'''
 	processed=''
 	if args and len(args):
 		processed=args[:]
@@ -98,21 +101,29 @@ def transform(javaFile, pyFile):
 				consMatch = None
 				if className:
 					consMatch = re.search(r'\b'+className+r'\b\((?P<args>.*)\)\s*\}?', line)	
-                    #TODO Revisar constructor
-					
+					# TODO Revisar constructor
+				
+				returnMatch = re.search(r'return .*;', line)	
 				varMatch = re.search(varPattern, line)
 				funMatch = re.search(funPattern, line)
 				
 				if consMatch:
-					args = processArgs(consMatch.group('args'))
-					line = re.sub(r'\b'+className+r'\b\((?P<args>.*)\)\s*\}?', r'__init__(self,'+args+'):', line)
-                    #TODO Revisar constructor
+					args=processArgs(consMatch.group('args'))
+					if className:
+						self_='self'
+						if len(args):
+							self_ += ', '
+						args = self_ + args
+						
+					line = re.sub(r'\b'+className+r'\b\((?P<args>.*)\)\s*\}?', r'__init__('+args+'):', line)
+				elif returnMatch:
+					line = re.sub(r';', '', line)
 				elif varMatch:
 					space = varMatch.group('space')
 					priv = varMatch.group('priv').rstrip() if varMatch.group('priv') else ''
 
-					vmodifs = varMatch.group('vmodifs')
-					vtype = varMatch.group('type')
+# 					vmodifs = varMatch.group('vmodifs')
+# 					vtype = varMatch.group('type')
 					vname = PRIVACY_PREFIXES.get(priv, '') + varMatch.group('vname')
 					replacements[varMatch.group('vname')] = vname
 					
@@ -129,13 +140,17 @@ def transform(javaFile, pyFile):
 						priv = funMatch.group('priv').rstrip() if funMatch.group('priv') else ''
 
 						fmodifs = funMatch.group('fmodifs').rstrip() if funMatch.group('fmodifs') else ''
-						ftype = funMatch.group('type')
+# 						ftype = funMatch.group('type')
 						fname = PRIVACY_PREFIXES.get(priv, '') + funMatch.group('fname')
 						replacements[funMatch.group('fname')] = fname
 
 						args = processArgs(funMatch.group('fargs'))
-						args = args if 'static' in fmodifs else 'self,' + args
-						 
+						if len(args):
+							if className:
+								args = args if 'static' in fmodifs else 'self,' + args
+							else:
+								args = args
+						
 						line = re.sub(funPattern, space+r'def ' + fname + r'('+args+'):', line)
 						if 'static' in fmodifs:
 							line = space +'@staticmethod\n' + line
