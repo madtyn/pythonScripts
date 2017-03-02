@@ -2,6 +2,8 @@
 
 '''
 TODO Tipos de datos con <.*>\[.*\]
+TODO Revisar el for
+TODO Comportamiento recursivo
 '''
 
 import re
@@ -110,7 +112,8 @@ def transform(javaFile, pyFile):
 							self_ += ', '
 						args = self_ + args
 						
-					line = re.sub(r'\b'+className+r'\b\((?P<args>.*)\)\s*\}?', r'__init__('+args+'):', line)
+					line = re.sub(r'\b'+className+r'\b\((?P<args>.*)\)\s*\{?', r'__init__('+args+'):', line)
+					line = os.linesep + line
 				elif returnMatch:
 					line = re.sub(r';', '', line)
 				elif varMatch:
@@ -259,7 +262,7 @@ def main(argv):
 	try:
 		# Options and arguments processing
 		print('processing opts')
-		opts, args = getopt.getopt(argv, "f:d:r", ["file", "dir", "recursive"])
+		opts, args = getopt.getopt(argv, "f:d:rR", ["file", "dir", "recursive"])
 		print('opts processed: ' + str(opts))
 		print('args processed: ' + str(args))
 	except getopt.GetoptError:
@@ -270,7 +273,7 @@ def main(argv):
 
 	# Proceeding to the code translation
 	for opt, val in opts:
-		RECURSIVE = opt in ['-r', '--recursive']
+		RECURSIVE = opt in ['-r', '-R', '--recursive']
 
 		print('value is ' + val)
 		if opt in ['-d', '--dir']:
