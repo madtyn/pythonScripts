@@ -1,8 +1,7 @@
 #!/usr/bin/python
 
-import random
-import numpy
-from numpy import *
+from random import randint
+from numpy import arange, array
 
 P = array([295075153])  # about 2^28
 
@@ -13,18 +12,18 @@ seeds=array([210205973, 22795300, 58776750, 121262470, 264731963,
 
 
 def findNext(i):
-	for x in arange(0,P[0]):
-		a = (2*x + 5) % P[0]
-		b= (3*(seeds[i] ^ x) + 7) % P[0]
-		if (a ^ b )== seeds[i+1]:
-			print("(",a,",",b,")")
-			return
+    for x in arange(0,P[0]):
+        a = (2*x + 5) % P[0]
+        b= (3*(seeds[i] ^ x) + 7) % P[0]
+        if (a ^ b )== seeds[i+1]:
+            print("(",a,",",b,")")
+            return
 
 class WeakPrng(object):
     def __init__(self, p):   # generate seed with 56 bits of entropy
         self.p = p
-        self.x = random.randint(0, p)
-        self.y = random.randint(0, p)
+        self.x = randint(0, p)
+        self.y = randint(0, p)
    
     def __next__(self):
         # x_{i+1} = 2*x_{i}+5  (mod p)
@@ -39,4 +38,4 @@ class WeakPrng(object):
 
 prng = WeakPrng(P)
 for i in range(1, 10):
-  print("output #%d: %d" % (i, next(prng)))
+    print("output #%d: %d" % (i, next(prng)))

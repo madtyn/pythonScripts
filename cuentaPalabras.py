@@ -21,17 +21,16 @@ else:
 	filename = sys.argv[1]
 
 # with cierra el fichero
-with open(filename, 'r') as file:
-	linea = file.readline().replace('\n', '')
+with open(filename, 'r') as fdesc:
+	linea = fdesc.readline().replace('\n', '')
 	while linea != '':
 		for palabra in re.findall(r'\b\w+\b', linea):
 			dicc[palabra] += 1
-		linea = file.readline()
+		linea = fdesc.readline()
 
 total = sum(dicc.values())
 listaOrdenada = sorted(list(dicc.items()), key=operator.itemgetter(1), reverse=True)
 
-
-with open('informe.txt', 'w') as file:
+with open('informe.txt', 'w') as foutput:
 	for (palabra,valor) in listaOrdenada:
-		file.write('{0!s: <20} {1:d}  {2:2.2%}\n'.format(palabra,valor,valor/total))
+		foutput.write('{0!s: <20} {1:d}  {2:2.2%}\n'.format(palabra,valor,valor/total))
