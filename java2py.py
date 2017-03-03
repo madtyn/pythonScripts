@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 
 '''
-TODO procesar argumentos de constructor __init__
-TODO Implementar con un diccionario un sistema de reemplazado de todas las variables locales
 TODO Tipos de datos con <.*>\[.*\]
+TODO Revisar el for
+TODO Comportamiento recursivo
 '''
 
 import re
@@ -13,22 +13,25 @@ import getopt
 RECURSIVE = False
 PRIVACY_PREFIXES = {'private':'__', 'protected':'_', 'public':''}
 
-def quickTask(line, regex, replacement=None, file=None):
+def quickTask(line, regex, replacement=None, foutput=None):
 	'''
 	
 	:param line: the line for processing
 	:param regex: the regular expression to find or replace
 	:param replacement: the replacement for the regex if found
-	:param file: the file to write to if there is a match
+	:param foutput: the foutput to write to if there is a match
 	'''
 	match = re.search(regex, line)
-	if match and line and file:
+	if match and line and foutput:
 		line = re.sub(regex, replacement, line)
-		file.write(line)
+		foutput.write(line)
 	return bool(match)
 
 def processArgs(args):
-    #TODO Testear
+	'''
+	Process the arguments for the Java method removing modifiers and types
+	:param args: the args to be processed
+	'''
 	processed=''
 	if args and len(args):
 		processed=args[:]
@@ -42,12 +45,12 @@ def transform(javaFile, pyFile):
 	with open(javaFile, 'r') as jFile:
 		with open(pyFile, 'w+') as pFile:
 			replacements = {}
-			privModifsExp=r'\s*(?P<priv>((\bpublic\b\s*|\bprivate\b\s*|\bprotected\b\s*))+)?'
-			vmodifsExp = privModifsExp+r'(?P<vmodifs>\b(static\s*|final\s*|transient\s*|volatile\s*)+)?'
-			fmodifsExp = privModifsExp+r'(?P<fmodifs>\b(abstract\s*|static\s*|synchronized\s*|native\s*)+)?'
+			privModifsExp = r'\s*(?P<priv>((\bpublic\b\s*|\bprivate\b\s*|\bprotected\b\s*))+)?'
+			vmodifsExp = r'(?P<vmodifs>\b(static\s*|final\s*|transient\s*|volatile\s*)+)?'
+			fmodifsExp = r'(?P<fmodifs>\b(abstract\s*|static\s*|synchronized\s*|native\s*)+)?'
 			datatypeExp = r'\b(?P<type>\w+)(<.*?>)?\[?\]?\s*'
-			varDecExp = r'^(?P<space>\s*)'+vmodifsExp+datatypeExp+r'\b(?P<vname>\w+)\s*(?P<value>=.*)?;'
-			funDecExp = r'^(?P<space>\s*)<?[^=]*?>?\s*'+fmodifsExp+datatypeExp+r'\b(?P<fname>\w+)\((?P<fargs>.*)\)\s*\{?'
+			varDecExp = r'^(?P<space>\s*)' + privModifsExp + vmodifsExp + datatypeExp + r'\b(?P<vname>\w+)\s*(?P<value>=.*)?;'
+			funDecExp = r'^(?P<space>\s*)<?[^=\.\(\)]*?>?\s*' + privModifsExp + fmodifsExp + datatypeExp + r'\b(?P<fname>\w+)\((?P<fargs>.*)\)\s*\{?'
 			
 			# Esto es lo que usaremos en las iteraciones
 			varPattern = re.compile(varDecExp)
@@ -80,6 +83,15 @@ def transform(javaFile, pyFile):
 
 				# CLASS DECLARATION
 				classDefLine = re.search(r'\bclass (?P<name>\w+)', line)
+				interfaceDefLine = re.search(r'\binterface (?P<name>\w+)', line)
+				consMatch = None
+				if className:
+					consMatch = re.search(r'\b'+className+r'\b\((?P<args>.*)\)\s*\{?', line)	
+				
+				returnMatch = re.search(r'return .*;', line)	
+				varMatch = re.search(varPattern, line)
+				funMatch = re.search(funPattern, line)
+
 				if classDefLine:
 					className = classDefLine.group('name')
 					line = re.sub(r'(.*?)\w* class \b(?P<name>\w+)\b(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
@@ -89,60 +101,60 @@ def transform(javaFile, pyFile):
 					line = re.sub(r'\(\).*\bimplements (?P<contracts>(.*))', r'(\g<contracts>)', line)
 					# Adds the interfaces if there were parents
 					line = re.sub(r'\((?P<parents>.+?).*\bimplements (?P<contracts>\S*)\s*', r'(\g<parents>,\g<contracts>', line)
-				
-				interfaceDefLine = re.search(r'\binterface (?P<name>\w+)', line)
-				if interfaceDefLine:
+				elif interfaceDefLine:
 					interfaceName = interfaceDefLine.group('name')
 					line = re.sub(r'(.*?)\w* interface \b(?P<name>\w+)\b(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
-				
-				consMatch = None
-				if className:
-					consMatch = re.search(r'\b'+className+r'\b\((?P<args>.*)\)\s*\}?', line)	
-                    #TODO Revisar constructor
-					
-				varMatch = re.search(varPattern, line)
-				funMatch = re.search(funPattern, line)
-				
-				if consMatch:
+				elif consMatch:
 					args = processArgs(consMatch.group('args'))
-					line = re.sub(r'\b'+className+r'\b\((?P<args>.*)\)\s*\}?', r'__init__(self,'+args+'):', line)
-                    #TODO Revisar constructor
+					if className:
+						self_='self'
+						if len(args):
+							self_ += ', '
+						args = self_ + args
+						
+					line = re.sub(r'\b'+className+r'\b\((?P<args>.*)\)\s*\{?', r'__init__('+args+'):', line)
+					line = os.linesep + line
+				elif returnMatch:
+					line = re.sub(r';', '', line)
 				elif varMatch:
 					space = varMatch.group('space')
 					priv = varMatch.group('priv').rstrip() if varMatch.group('priv') else ''
 
-					vmodifs = varMatch.group('vmodifs')
-					vtype = varMatch.group('type')
+# 					vmodifs = varMatch.group('vmodifs')
+# 					vtype = varMatch.group('type')
 					vname = PRIVACY_PREFIXES.get(priv, '') + varMatch.group('vname')
 					replacements[varMatch.group('vname')] = vname
 					
 					#Si es array, lo convertimos a una inicializacion a [] con ; de Java
-					line = re.sub(r'(.*)\[\]([^=]*);', r'\1\2 = [];', line)
+					line = re.sub(r'(.*)(?P<arr>(\[\])*)([^=]*);', r'\1\3 = \g<arr>;', line)
 					# Si no es array, inicializamos a None
 					line = re.sub(r'^([^=]*);', r'\1 = None;', line)
 					line = re.sub(varPattern, space + vname + r' \g<value>', line)
+				elif funMatch:
+					space = funMatch.group('space')
+					priv = funMatch.group('priv').rstrip() if funMatch.group('priv') else ''
 
-				elif not classDefLine and not interfaceDefLine:
+					fmodifs = funMatch.group('fmodifs').rstrip() if funMatch.group('fmodifs') else ''
+# 						ftype = funMatch.group('type')
+					fname = PRIVACY_PREFIXES.get(priv, '') + funMatch.group('fname')
+					replacements[funMatch.group('fname')] = fname
+
+					args = processArgs(funMatch.group('fargs'))
 					
-					if funMatch:
-						space = funMatch.group('space')
-						priv = funMatch.group('priv').rstrip() if funMatch.group('priv') else ''
-
-						fmodifs = funMatch.group('fmodifs').rstrip() if funMatch.group('fmodifs') else ''
-						ftype = funMatch.group('type')
-						fname = PRIVACY_PREFIXES.get(priv, '') + funMatch.group('fname')
-						replacements[funMatch.group('fname')] = fname
-
-						args = processArgs(funMatch.group('fargs'))
-						args = args if 'static' in fmodifs else 'self,' + args
-						 
-						line = re.sub(funPattern, space+r'def ' + fname + r'('+args+'):', line)
-						if 'static' in fmodifs:
-							line = space +'@staticmethod\n' + line
-						if interfaceName or 'abstract' in fmodifs:
-							line += os.linesep + space + '\tpass'
-						line = os.linesep + line
+					if className and not 'static' in fmodifs:
+						self_='self'
+						if len(args):
+							self_ += ', '
+						args = self_ + args
 					
+					line = re.sub(funPattern, space+r'def ' + fname + r'('+args+'):', line)
+					line = re.sub(r'throws (\w*Exception,?\s*)+[ \t]{?', r'', line)
+					if 'static' in fmodifs:
+						line = space +'@staticmethod\n' + line
+					if interfaceName or 'abstract' in fmodifs:
+						line += space + '\tpass\n'
+					line = os.linesep + line
+
 				line = re.sub(r'new ArrayList(<\b\w+\b>)?\(.*\)?', r'[]',line)
 				line = re.sub(r'\bList(<\b\w*\b>)', r'',line)
 
@@ -250,7 +262,7 @@ def main(argv):
 	try:
 		# Options and arguments processing
 		print('processing opts')
-		opts, args = getopt.getopt(argv, "f:d:r", ["file", "dir", "recursive"])
+		opts, args = getopt.getopt(argv, "f:d:rR", ["file", "dir", "recursive"])
 		print('opts processed: ' + str(opts))
 		print('args processed: ' + str(args))
 	except getopt.GetoptError:
@@ -261,7 +273,7 @@ def main(argv):
 
 	# Proceeding to the code translation
 	for opt, val in opts:
-		RECURSIVE = opt in ['-r', '--recursive']
+		RECURSIVE = opt in ['-r', '-R', '--recursive']
 
 		print('value is ' + val)
 		if opt in ['-d', '--dir']:
@@ -280,6 +292,7 @@ def main(argv):
 				processDir(BASE_DIR)
 			else:
 				processFile(os.path.join(BASE_DIR, val))
+	sys.exit(0)
 
 if __name__ == "__main__":
 	main(sys.argv[1:])
