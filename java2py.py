@@ -3,7 +3,7 @@
 '''
 TODO Tipos de datos con <.*>\[.*\]
 TODO Revisar el for
-TODO Comportamiento recursivo
+TODO Deteccion mejorada interfaces -> (public)? interface\s*\b(?P<name>\w+\b<>)\s*(extends\s*(?P<inames>(((\w+\.?)*<?\w*>?,?\s*))+))?\s*{?
 '''
 
 import re
@@ -15,7 +15,8 @@ PRIVACY_PREFIXES = {'private':'__', 'protected':'_', 'public':''}
 
 def quickTask(line, regex, replacement=None, foutput=None):
 	'''
-	
+	Optionally, makes a quick replacement task 
+	and detects a situation for returning True to continue the loop
 	:param line: the line for processing
 	:param regex: the regular expression to find or replace
 	:param replacement: the replacement for the regex if found
@@ -35,7 +36,7 @@ def processArgs(args):
 	processed=''
 	if args and len(args):
 		processed=args[:]
-		processed = re.sub(r'(((\b\w+\b\s+)+))(?P<arg>\b\w+,?)', r'\g<arg>', processed) # TODO Meter '*' en tipo array o List/arrayList
+		processed = re.sub(r'(((\b\w+\b[\[\]]*\s+)+))(?P<arg>\b\w+,?)', r'\g<arg>', processed) # TODO Meter '*' en tipo array o List/arrayList
 	return processed
 
 def transform(javaFile, pyFile):
@@ -126,7 +127,7 @@ def transform(javaFile, pyFile):
 					replacements[varMatch.group('vname')] = vname
 					
 					#Si es array, lo convertimos a una inicializacion a [] con ; de Java
-					line = re.sub(r'(.*)(?P<arr>(\[\])*)([^=]*);', r'\1\3 = \g<arr>;', line)
+					line = re.sub(r'(.*)(?P<arr>(\[\])+)([^=]*);', r'\1\3 = \g<arr>;', line)
 					# Si no es array, inicializamos a None
 					line = re.sub(r'^([^=]*);', r'\1 = None;', line)
 					line = re.sub(varPattern, space + vname + r' \g<value>', line)
@@ -155,7 +156,7 @@ def transform(javaFile, pyFile):
 						line += space + '\tpass\n'
 					line = os.linesep + line
 
-				line = re.sub(r'new ArrayList(<\b\w+\b>)?\(.*\)?', r'[]',line)
+				line = re.sub(r'new ArrayList(<\b\w*\b>)?\(.*\)?', r'[]',line)
 				line = re.sub(r'\bList(<\b\w*\b>)', r'',line)
 
 				# Control structures
@@ -217,6 +218,8 @@ def transform(javaFile, pyFile):
 				line = re.sub(r'\bfalse\b', 'False', line)
 				line = re.sub(r'(\W)\b(this)\b(\W)', r'\1self\3', line)
 				line = re.sub(r'(\W)\b(null)\b(\W)', r'\1None\3', line)
+				line = re.sub(r'System\.out\.println\((?P<content>.*)\)', r'print(\g<content> + ' + os.linesep + r')', line)
+				line = re.sub(r'System\.out\.print\(', r'print(', line)
 				
 				for k,v in replacements.items():
 					line = re.sub(r'\b'+k+r'\b', v, line)
