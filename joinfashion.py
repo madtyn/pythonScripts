@@ -71,31 +71,39 @@ def replaceLine(pattern, replacement, line, adding):
 	return line
 
 def commentLine(pattern, line):
-	''' Comenta la linea si encaja con la expresion regular y actualiza el numero de comentarios realizados	'''
-	# Queremos conservar espacios y retornos de carro antes y despues de la expresion a comentar
-	# Si no, se van a juntar varias lineas en una y otros efectos no deseados
-	# Asi que capturamos los espacios (seran los grupos \1 y \3), y la expresion deseada (sera el \2)
+	''' Comenta la linea si encaja con la expresion regular y actualiza el numero de comentarios realizados	
+		Queremos conservar espacios y retornos de carro antes y despues de la expresion a comentar
+		Si no, se van a juntar varias lineas en una y otros efectos no deseados
+		Asi que capturamos los espacios (seran los grupos \1 y \3), y la expresion deseada (sera el \2)
+	'''
 	lineToComment = r'(\s*)(' + pattern + r')(\s*)$'
 	
-	# Comentamos rodeando la expresion deseada \2 con <!-- --> 
-	# y manteniendo los espacios \1 y \3 en su sitio
+	'''
+	Comentamos rodeando la expresion deseada \2 con <!-- --> 
+	y manteniendo los espacios \1 y \3 en su sitio
+	'''
 	return replaceLine(lineToComment, r'\1<!--\2-->\3', line, +1)
 
 
 def uncommentLine(pattern, line):
-	''' Descomenta la linea si encaja con la expresion regular y actualiza el numero de comentarios realizados	'''
-	# Queremos conservar espacios y retornos de carro antes y despues de la expresion a comentar
-	# Si no, se van a juntar varias lineas en una y otros efectos no deseados
-	# Asi que capturamos los espacios (seran los grupos \1 y \3), y la expresion deseada (sera el \2)
-	# Como buscamos la expresion comentada, la expresion debe llevar <!-- --> rodeando al segundo grupo
+	''' 
+	Descomenta la linea si encaja con la expresion regular y actualiza el numero de comentarios realizados
+	Queremos conservar espacios y retornos de carro antes y despues de la expresion a comentar
+	Si no, se van a juntar varias lineas en una y otros efectos no deseados
+	Asi que capturamos los espacios (seran los grupos \1 y \3), y la expresion deseada (sera el \2)
+	Como buscamos la expresion comentada, la expresion debe llevar <!-- --> rodeando al segundo grupo
+	'''
 	lineToComment = r'(\s*)<!--(.*?' + pattern + r'.*?)-->(\s*)$'
 	
-	# Descomentamos al conservar solo la expresion deseada al no capturar arriba <!-- ni --> descartandolos
-	# y manteniendo los espacios \1 y \3 en su sitio
+	'''
+	Descomentamos al conservar solo la expresion deseada al no capturar arriba <!-- ni --> descartandolos
+	y manteniendo los espacios \1 y \3 en su sitio
+	'''
 	return replaceLine(lineToComment, r'\1\2\3', line, -1)
 
 def commentLines(line):
-	''' Para una linea te texto, prueba a comentarla 
+	''' 
+	Para una linea te texto, prueba a comentarla 
 	si contiene cualquiera de los dos tags a comentar (TARGET_LINES)
 	'''
 	global commentsMade
@@ -265,6 +273,7 @@ def main(argv):
 
 	showMessageDialog(successMsg, 'Tarea terminada')
 	print('\n')
+	sys.exit(0)
 
 if __name__ == "__main__":
 	main(sys.argv[1:])
