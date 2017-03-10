@@ -137,7 +137,7 @@ def transform(javaFile, pyFile):
                     vname = PRIVACY_PREFIXES.get(priv, '') + varMatch.group('vname')
                     replacements[varMatch.group('vname')] = vname
 
-                    #Si es array, lo convertimos a una inicializacion a [] con ; de Java
+                    # Si es array, lo convertimos a una inicializacion a [] con ; de Java
                     line = re.sub(r'(.*)(?P<arr>(\[\])+)([^=]*);', r'\1\3 = \g<arr>;', line)
                     # Si no es array, inicializamos a None
                     line = re.sub(r'^([^=]*);', r'\1 = None;', line)
@@ -153,8 +153,8 @@ def transform(javaFile, pyFile):
 
                     args = processArgs(funMatch.group('fargs'))
 
-                    if className and not 'static' in fmodifs:
-                        self_='self'
+                    if className and 'static' not in fmodifs:
+                        self_ = 'self'
                         if len(args):
                             self_ += ', '
                         args = self_ + args
