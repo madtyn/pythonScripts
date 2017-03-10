@@ -45,7 +45,8 @@ def processArgs(args):
     processed = ''
     if args and len(args):
         processed = args[:]
-        processed = re.sub(r'(((\b\w+\b[\[\]]*\s+)+))(?P<arg>\b\w+,?)', r'\g<arg>', processed) # TODO Meter '*' en tipo array o List/arrayList
+        # TODO Meter '*' en tipo array o List/arrayList
+        processed = re.sub(r'(((\b\w+\b[\[\]]*\s+)+))(?P<arg>\b\w+,?)', r'\g<arg>', processed)
     return processed
 
 
@@ -97,7 +98,7 @@ def transform(javaFile, pyFile):
                 interfaceDefLine = re.search(r'\binterface (?P<name>\w+)', line)
                 consMatch = None
                 if className:
-                    consMatch = re.search(r'\b'+className+r'\b\((?P<args>.*)\)\s*\{?', line)
+                    consMatch = re.search(r'\b' + className + r'\b\((?P<args>.*)\)\s*\{?', line)
 
                 returnMatch = re.search(r'return .*;', line)
                 varMatch = re.search(varPattern, line)
@@ -118,12 +119,12 @@ def transform(javaFile, pyFile):
                 elif consMatch:
                     args = processArgs(consMatch.group('args'))
                     if className:
-                        self_='self'
+                        self_ = 'self'
                         if len(args):
                             self_ += ', '
                         args = self_ + args
 
-                    line = re.sub(r'\b'+className+r'\b\((?P<args>.*)\)\s*\{?', r'__init__('+args+'):', line)
+                    line = re.sub(r'\b' + className + r'\b\((?P<args>.*)\)\s*\{?', r'__init__(' + args + '):', line)
                     line = os.linesep + line
                 elif returnMatch:
                     line = re.sub(r';', '', line)
@@ -158,16 +159,16 @@ def transform(javaFile, pyFile):
                             self_ += ', '
                         args = self_ + args
 
-                    line = re.sub(funPattern, space+r'def ' + fname + r'('+args+'):', line)
+                    line = re.sub(funPattern, space + r'def ' + fname + r'(' + args + '):', line)
                     line = re.sub(r'throws (\w*Exception,?\s*)+[ \t]{?', r'', line)
                     if 'static' in fmodifs:
-                        line = space +'@staticmethod\n' + line
+                        line = space + '@staticmethod\n' + line
                     if interfaceName or 'abstract' in fmodifs:
                         line += space + '\tpass\n'
                     line = os.linesep + line
 
-                line = re.sub(r'new ArrayList(<\b\w*\b>)?\(.*\)?', r'[]',line)
-                line = re.sub(r'\bList(<\b\w*\b>)', r'',line)
+                line = re.sub(r'new ArrayList(<\b\w*\b>)?\(.*\)?', r'[]', line)
+                line = re.sub(r'\bList(<\b\w*\b>)', r'', line)
 
                 # Control structures
                 line = re.sub(r'(\w+).equals\((.*)\)', r'\1 == \2', line)
@@ -183,12 +184,12 @@ def transform(javaFile, pyFile):
                 line = re.sub(r'(\s*)}?.*\belse\b.*{?', r'\1else:', line)
                 line = re.sub(r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?', r'for \1 in range(\2, \3): # FIXME \g<nline>', line)
                 line = re.sub(r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<=\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?', r'for \1 in range(\2, \3+1): # FIXME \g<nline>', line)
-                line = re.sub(r'\bfor\b.*\(.*\b(\w+)\b.*:.*\b(\w+)\b.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?', r'for \1 in \2: #TODO Check condition\g<nline> ' , line)
+                line = re.sub(r'\bfor\b.*\(.*\b(\w+)\b.*:.*\b(\w+)\b.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?', r'for \1 in \2: #TODO Check condition\g<nline> ', line)
 
                 line = re.sub(r'\bthrow\b', r'raise', line)
                 line = re.sub(r'\btry\b\s*{', 'try:', line)
                 line = re.sub(r'catch.*\(\s*(?:final)?\s*(?P<class>\b\w*Exception\b)\s+\b(?P<name>\w+)\b\)\s*{', r'except \g<class> as \g<name>:', line)
-                line = re.sub(r'\bfinally\b\s*{', 'else:' , line)
+                line = re.sub(r'\bfinally\b\s*{', 'else:', line)
 
                 line = re.sub(r'Integer.valueOf\((.+)\)', r'int(\1)', line)
                 line = re.sub(r'(\w+).toString()', r'str(\1)', line)
@@ -231,10 +232,11 @@ def transform(javaFile, pyFile):
                 line = re.sub(r'System\.out\.println\(', r'print(', line)
                 line = re.sub(r'System\.out\.print\((?P<content>.*)\)', r'print(\g<content>,)', line)
 
-                for k,v in replacements.items():
-                    line = re.sub(r'\b'+k+r'\b', v, line)
+                for k, v in replacements.items():
+                    line = re.sub(r'\b' + k + r'\b', v, line)
 
                 pFile.write(line)
+
 
 def processDir(dirName):
     '''
@@ -250,6 +252,7 @@ def processDir(dirName):
 
         for filename in dirFiles:
             processFile(os.path.join(actualDir, filename))
+
 
 def processFile(filename):
     '''
