@@ -4,6 +4,9 @@
 TODO
 Tipos de datos con r'<.*>\[.*\]'
 Revisar el for
+Metodo toString en declaracion de metodo
+Llamada / invocacion a metodo toString() u otros:
+    Regex de algo que puede invocar un metodo es (?P<obj>(\w+(?P<parenth>\(.*?\))?\.)+)nombreMetodo\(\)
 Usar @abc.abstractmethod justo encima de los metodos abstractos?
 Usar class Abstract([metaclass=ABCMeta]|ABC) para las abstractas (Python +3 y +3.4 respectivamente)
 Deteccion mejorada interfaces :
@@ -54,204 +57,210 @@ def transform(javaFile, pyFile):
     '''
     With a java file as input produces a python file as output
     '''
-    with open(javaFile, 'r') as jFile:
-        with open(pyFile, 'w+') as pFile:
-            # For variable names replacements
-            replacements = {}
+    # In Java, a variable may be belong to one out of three kinds of privacy
+    privModifsExp = r'\s*(?P<priv>((\bpublic\b\s*|\bprivate\b\s*|\bprotected\b\s*))+)?'
 
-            # In Java, a variable may be belong to one out of three kinds of privacy
-            privModifsExp = r'\s*(?P<priv>((\bpublic\b\s*|\bprivate\b\s*|\bprotected\b\s*))+)?'
+    # Modifiers for variables and functions
+    vmodifsExp = r'(?P<vmodifs>\b(static\s*|final\s*|transient\s*|volatile\s*)+)?'
+    fmodifsExp = r'(?P<fmodifs>\b(abstract\s*|static\s*|synchronized\s*|native\s*)+)?'
 
-            # Modifiers for variables and functions
-            vmodifsExp = r'(?P<vmodifs>\b(static\s*|final\s*|transient\s*|volatile\s*)+)?'
-            fmodifsExp = r'(?P<fmodifs>\b(abstract\s*|static\s*|synchronized\s*|native\s*)+)?'
+    # Data type for a variable or the function returned value
+    datatypeExp = r'\b(?P<type>\w+)(<.*?>)?\[?\]?\s*'
 
-            # Data type for a variable or the function returned value
-            datatypeExp = r'\b(?P<type>\w+)(<.*?>)?\[?\]?\s*'
+    # The whole of variable or function declaration
+    varDecExp = r'^(?P<space>\s*)' + privModifsExp + vmodifsExp + datatypeExp + r'\b(?P<vname>\w+)\s*(?P<value>=.*)?;'
+    funDecExp = r'^(?P<space>\s*)<?[^=\.\(\)]*?>?\s*' + privModifsExp + fmodifsExp + datatypeExp + r'\b(?P<fname>\w+)\((?P<fargs>.*)\)\s*\{?'
+    generalForExp = r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?'
+    generalLtForExp = r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<=\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?'
 
-            # The whole of variable or function declaration
-            varDecExp = r'^(?P<space>\s*)' + privModifsExp + vmodifsExp + datatypeExp + r'\b(?P<vname>\w+)\s*(?P<value>=.*)?;'
-            funDecExp = r'^(?P<space>\s*)<?[^=\.\(\)]*?>?\s*' + privModifsExp + fmodifsExp + datatypeExp + r'\b(?P<fname>\w+)\((?P<fargs>.*)\)\s*\{?'
-            generalForExp = r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?'
+    # For better performance, we compile the patterns for declaration statements
+    varPattern = re.compile(varDecExp)
+    funPattern = re.compile(funDecExp)
 
-            # For better performance, we compile the patterns for declaration statements
-            varPattern = re.compile(varDecExp)
-            funPattern = re.compile(funDecExp)
+    quickTaskList = []
+    quickTaskList.append((r'^(\s*)package', r'\1#package'))
+    quickTaskList.append((r'^(\s*)import', r'\1#import'))
+    quickTaskList.append((r'//', r'#'))
+    quickTaskList.append((r'/\*|\*/', r'"""'))
+    quickTaskList.append((r'@param', r':param'))
 
-            quickTaskList = []
-            quickTaskList.append((r'^(\s*)package', r'\1#package'))
-            quickTaskList.append((r'^(\s*)import', r'\1#import'))
-            quickTaskList.append((r'//', r'#'))
-            quickTaskList.append((r'/\*|\*/', r'"""'))
-            quickTaskList.append((r'@param', r':param'))
+    with open(javaFile, 'r') as jFile, open(pyFile, 'w+') as pFile:
+        # For variable names replacements
+        replacements = {}
+        className = None
+        interfaceName = None
 
-            className = None
-            interfaceName = None
-            for oldLine in jFile:
-                line = oldLine[:]
-                line = line.rstrip()
-                line = line + os.linesep
+        for oldLine in jFile:
+            line = oldLine[:]
+            line = line.rstrip()
+            line = line + os.linesep
 
-                taskMade = False
-                # 1-Change replacements tasks which can be made and allow to go on with the next line if made
-                for task in quickTaskList:
-                    taskMade = quickTask(line, task[0], task[1], pFile)
-                    if taskMade:
-                        break
-
+            taskMade = False
+            # 1-Change replacements tasks which can be made and allow to go on with the next line if made
+            for task in quickTaskList:
+                taskMade = quickTask(line, task[0], task[1], pFile)
                 if taskMade:
-                    taskMade = False
-                    continue
+                    break
 
-                # Not meaningful lines. We don't need to write to pFile. We may continue the for loop
-                if quickTask(line, r'^\s*}\s*\r?\n') or quickTask(line, r'^\s*\r?\n'):
-                    continue
+            if taskMade:
+                taskMade = False
+                continue
 
-                # CLASS DECLARATION
-                classDefLine = re.search(r'\bclass (?P<name>\w+)', line)
-                interfaceDefLine = re.search(r'\binterface (?P<name>\w+)', line)
-                consMatch = None
+            # Not meaningful lines. We don't need to write to pFile. We may continue the for loop
+            if quickTask(line, r'^\s*}\s*\r?\n') or quickTask(line, r'^\s*\r?\n'):
+                continue
+
+            # CLASS DECLARATION
+            classDefLine = re.search(r'\bclass (?P<name>\w+)', line)
+            interfaceDefLine = re.search(r'\binterface (?P<name>\w+)', line)
+            consMatch = None
+            if className:
+                consMatch = re.search(r'\b' + className + r'\b\((?P<args>.*)\)\s*\{?', line)
+
+            returnMatch = re.search(r'return .*;', line)
+            varMatch = re.search(varPattern, line)
+            funMatch = re.search(funPattern, line)
+
+            if classDefLine:
+                className = classDefLine.group('name')
+                isAbstractClass = re.search(r'abstract', line)
+                line = re.sub(r'(.*?)\w* class \b(?P<name>\w+)\b(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
+                # Adds the parents
+                line = re.sub(r'\(\).*\bextends (?P<parents>([ .\w]*))\s*?(?P<nline>\r?\n?)', r'(\g<parents>):\g<nline>', line)
+                # Adds the interfaces if there were no parents
+                line = re.sub(r'\(\).*\bimplements (?P<ifaces>(.*))', r'(\g<ifaces>)', line)
+                # Adds the interfaces if there were parents
+                line = re.sub(r'\((?P<parents>.+?).*\bimplements (?P<ifaces>\S*)\s*', r'(\g<parents>,\g<ifaces>', line)
+                if isAbstractClass:
+                    line = re.sub(className+r'\((?P<ancestors>(\w+, )*\w+)\)\s*:', r'(\g<ancestors>, metaclass=ABCMeta):', line)
+                    line = re.sub(className+r'\(\s*\)\s*:', r'(metaclass=ABCMeta):', line)
+                else:
+                    pass # TODO Heredar de object si no hay padres
+            elif interfaceDefLine:
+                interfaceName = interfaceDefLine.group('name')
+                line = re.sub(r'(.*?)\w* interface \b(?P<name>\w+)\b(.*?)\s*{(?P<nlin>\r?\n?)', r'\1class \g<name>(): \3\g<nlin>', line)
+            elif consMatch:
+                args = processArgs(consMatch.group('args'))
                 if className:
-                    consMatch = re.search(r'\b' + className + r'\b\((?P<args>.*)\)\s*\{?', line)
+                    self_ = 'self'
+                    if len(args):
+                        self_ += ', '
+                    args = self_ + args
 
-                returnMatch = re.search(r'return .*;', line)
-                varMatch = re.search(varPattern, line)
-                funMatch = re.search(funPattern, line)
+                line = re.sub(r'\b' + className + r'\b\((?P<args>.*)\)\s*\{?', r'__init__(' + args + '):', line)
+                line = os.linesep + line
+            elif returnMatch:
+                line = re.sub(r';', '', line)
+            elif varMatch:
+                space = varMatch.group('space')
+                priv = varMatch.group('priv').rstrip() if varMatch.group('priv') else ''
 
-                if classDefLine:
-                    className = classDefLine.group('name')
-                    isAbstractClass = re.search(r'abstract', line)
-                    line = re.sub(r'(.*?)\w* class \b(?P<name>\w+)\b(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
-                    # Adds the parents
-                    line = re.sub(r'\(\).*\bextends (?P<parents>([ .\w]*))\s*?(?P<nline>\r?\n?)', r'(\g<parents>):\g<nline>', line)
-                    # Adds the interfaces if there were no parents
-                    line = re.sub(r'\(\).*\bimplements (?P<ifaces>(.*))', r'(\g<ifaces>)', line)
-                    # Adds the interfaces if there were parents
-                    line = re.sub(r'\((?P<parents>.+?).*\bimplements (?P<ifaces>\S*)\s*', r'(\g<parents>,\g<ifaces>', line)
-                    if isAbstractClass:
-                        line = re.sub(r')\s*:', r', metaclass=ABCMeta)', line)
-                elif interfaceDefLine:
-                    interfaceName = interfaceDefLine.group('name')
-                    line = re.sub(r'(.*?)\w* interface \b(?P<name>\w+)\b(.*?)\s*{(?P<nlin>\r?\n?)', r'\1class \g<name>(): \3\g<nlin>', line)
-                elif consMatch:
-                    args = processArgs(consMatch.group('args'))
-                    if className:
-                        self_ = 'self'
-                        if len(args):
-                            self_ += ', '
-                        args = self_ + args
+                # vmodifs = varMatch.group('vmodifs')
+                # vtype = varMatch.group('type')
+                vname = PRIVACY_PREFIXES.get(priv, '') + varMatch.group('vname')
+                replacements[varMatch.group('vname')] = vname
 
-                    line = re.sub(r'\b' + className + r'\b\((?P<args>.*)\)\s*\{?', r'__init__(' + args + '):', line)
-                    line = os.linesep + line
-                elif returnMatch:
-                    line = re.sub(r';', '', line)
-                elif varMatch:
-                    space = varMatch.group('space')
-                    priv = varMatch.group('priv').rstrip() if varMatch.group('priv') else ''
+                # If it's an array, we make the [] initialisation with the semicolon (;) ending
+                line = re.sub(r'(.*)(?P<arr>(\[\])+)([^=]*);', r'\1\3 = \g<arr>;', line)
+                # If it's not an array, first value will be None
+                line = re.sub(r'^([^=]*);', r'\1 = None;', line)
+                line = re.sub(varPattern, space + vname + r' \g<value>', line)
+            elif funMatch:
+                space = funMatch.group('space')
+                priv = funMatch.group('priv').rstrip() if funMatch.group('priv') else ''
 
-                    # vmodifs = varMatch.group('vmodifs')
-                    # vtype = varMatch.group('type')
-                    vname = PRIVACY_PREFIXES.get(priv, '') + varMatch.group('vname')
-                    replacements[varMatch.group('vname')] = vname
-
-                    # If it's an array, we make the [] initialisation with the semicolon (;) ending
-                    line = re.sub(r'(.*)(?P<arr>(\[\])+)([^=]*);', r'\1\3 = \g<arr>;', line)
-                    # If it's not an array, first value will be None
-                    line = re.sub(r'^([^=]*);', r'\1 = None;', line)
-                    line = re.sub(varPattern, space + vname + r' \g<value>', line)
-                elif funMatch:
-                    space = funMatch.group('space')
-                    priv = funMatch.group('priv').rstrip() if funMatch.group('priv') else ''
-
-                    fmodifs = funMatch.group('fmodifs').rstrip() if funMatch.group('fmodifs') else ''
-                    # ftype = funMatch.group('type')
-                    fname = PRIVACY_PREFIXES.get(priv, '') + funMatch.group('fname')
+                fmodifs = funMatch.group('fmodifs').rstrip() if funMatch.group('fmodifs') else ''
+                # ftype = funMatch.group('type')
+                fname = PRIVACY_PREFIXES.get(priv, '') + funMatch.group('fname')
+                if fname == 'toString':
+                    fname = '__str__'
+                else:
                     replacements[funMatch.group('fname')] = fname
 
-                    args = processArgs(funMatch.group('fargs'))
+                args = processArgs(funMatch.group('fargs'))
 
-                    if className and 'static' not in fmodifs:
-                        self_ = 'self'
-                        if len(args):
-                            self_ += ', '
-                        args = self_ + args
+                if className and 'static' not in fmodifs:
+                    self_ = 'self'
+                    if len(args):
+                        self_ += ', '
+                    args = self_ + args
 
-                    line = re.sub(funPattern, space + r'def ' + fname + r'(' + args + '):', line)
-                    line = re.sub(r'throws (\w*Exception,?\s*)+[ \t]{?', r'', line)
-                    if 'static' in fmodifs:
-                        line = space + '@staticmethod\n' + line
-                    if interfaceName or 'abstract' in fmodifs:
-                        line += space + '\tpass\n'
-                    line = os.linesep + line
+                line = re.sub(funPattern, space + r'def ' + fname + r'(' + args + '):', line)
+                line = re.sub(r'throws (\w*Exception,?\s*)+[ \t]{?', r'', line)
+                if 'static' in fmodifs:
+                    line = space + '@staticmethod\n' + line
+                if interfaceName or 'abstract' in fmodifs:
+                    line += space + '\tpass\n'
+                line = os.linesep + line
 
-                line = re.sub(r'new ArrayList(<\b\w*\b>)?\(.*\)?', r'[]', line)
-                line = re.sub(r'\bList(<\b\w*\b>)', r'', line)
+            line = re.sub(r'new ArrayList(<\b\w*\b>)?\(.*\)?', r'[]', line)
+            line = re.sub(r'\bList(<\b\w*\b>)', r'', line)
 
-                # Control structures
-                line = re.sub(r'.equals\((.*)\)', r' == \1', line)
-                line = re.sub(r'!=\s*null', r'', line)
-                line = re.sub(r'==\s*null', r'is None', line)
-                line = re.sub(r'!\s*\(', r'not (', line)
-                line = re.sub(r'!\s*\b(\w+)\b', r'not \1', line)
-                line = re.sub(r'&&', 'and', line)
-                line = re.sub(r'\|\|', 'or', line)
-                line = re.sub(r'\bwhile\b\s*\((?P<cond>.*)\).*{', r'while \g<cond>: #TODO Check condition', line)
-                line = re.sub(r'\belse if\b\s*\((?P<cond>.*)\).*{', r'elif \g<cond>: #TODO Check condition', line)
-                line = re.sub(r'if\s*\((?P<cond>.*)\).*{', r'if \g<cond>: #TODO Check condition', line)
-                line = re.sub(r'(\s*)}?.*\belse\b.*{?', r'\1else:', line)
+            # Control structures
+            line = re.sub(r'.equals\((.*)\)', r' == \1', line)
+            line = re.sub(r'!=\s*null', r'', line)
+            line = re.sub(r'==\s*null', r'is None', line)
+            line = re.sub(r'!\s*\(', r'not (', line)
+            line = re.sub(r'!\s*\b(\w+)\b', r'not \1', line)
+            line = re.sub(r'&&', 'and', line)
+            line = re.sub(r'\|\|', 'or', line)
+            line = re.sub(r'\bwhile\b\s*\((?P<cond>.*)\).*{', r'while \g<cond>: #TODO Check condition', line)
+            line = re.sub(r'\belse if\b\s*\((?P<cond>.*)\).*{', r'elif \g<cond>: #TODO Check condition', line)
+            line = re.sub(r'if\s*\((?P<cond>.*)\).*{', r'if \g<cond>: #TODO Check condition', line)
+            line = re.sub(r'(\s*)}?.*\belse\b.*{?', r'\1else:', line)
 
-                line = re.sub(generalForExp, r'for \1 in range(\2, \3): # FIXME \g<nline>', line)
-                line = re.sub(generalForExp.replace('<', '<='), r'for \1 in range(\2, \3+1): # FIXME \g<nline>', line)
-                line = re.sub(r'\bfor\b.*\(.*\b(\w+)\b.*:.*\b(\w+)\b.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?', r'for \1 in \2: #TODO Check condition\g<nline> ', line)
-                line = re.sub(r'range\(0,', r'range(', line)
+            line = re.sub(generalForExp, r'for \1 in range(\2, \3): # FIXME \g<nline>', line)
+            line = re.sub(generalLtForExp, r'for \1 in range(\2, \3+1): # FIXME \g<nline>', line)
+            line = re.sub(r'\bfor\b.*\(.*\b(\w+)\b.*:.*\b(\w+)\b.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?', r'for \1 in \2: #TODO Check condition\g<nline> ', line)
+            line = re.sub(r'range\(0,', r'range(', line)
 
-                line = re.sub(r'\bthrow\b', r'raise', line)
-                line = re.sub(r'\btry\b\s*{', 'try:', line)
-                line = re.sub(r'catch.*\(\s*(?:final)?\s*(?P<class>\b\w*Exception\b)\s+\b(?P<name>\w+)\b\)\s*{', r'except \g<class> as \g<name>:', line)
-                line = re.sub(r'\bfinally\b\s*{', 'else:', line)
+            line = re.sub(r'\bthrow\b', r'raise', line)
+            line = re.sub(r'\btry\b\s*{', 'try:', line)
+            line = re.sub(r'catch.*\(\s*(?:final)?\s*(?P<class>\b\w*Exception\b)\s+\b(?P<name>\w+)\b\)\s*{', r'except \g<class> as \g<name>:', line)
+            line = re.sub(r'\bfinally\b\s*{', 'else:', line)
 
-                line = re.sub(r'Integer.valueOf\((.+)\)', r'int(\1)', line)
-                line = re.sub(r'(\w+).toString()', r'str(\1)', line)
+            line = re.sub(r'Integer.valueOf\((.+)\)', r'int(\1)', line)
+            line = re.sub(r'([\w]+).toString\(\)', r'str(\1)', line)
 
-                # Some operator replacements
-                line = re.sub(r'(\w+)\+\+', r'\1 += 1', line)
-                line = re.sub(r'(\w+)--', r'\1 -= 1', line)
+            # Some operator replacements
+            line = re.sub(r'(\w+)\+\+', r'\1 += 1', line)
+            line = re.sub(r'(\w+)--', r'\1 -= 1', line)
 
-                # Anonymous class declared
-                line = re.sub(r'new\s*\b(?P<name>\w+)\b\((.*)\)\s*{$', r'class \g<name>: #TODO Revisar \2', line)
+            # Anonymous class declared
+            line = re.sub(r'new\s*\b(?P<name>\w+)\b\((.*)\)\s*{$', r'class \g<name>: #TODO Revisar \2', line)
 
-                # Tokens to be completely deleted
-                line = re.sub(r';', '', line)
-                line = re.sub(r'\bnew\b ', '', line)
-                line = re.sub(r'\bvoid\b ', '', line)
-                line = re.sub(r'\bstatic\b ', '', line)
-                line = re.sub(r'\bprotected\b ', '', line)
-                line = re.sub(r'\bfinal\b ', '', line)
-                line = re.sub(r'@\w+', '', line)
+            # Tokens to be completely deleted
+            line = re.sub(r';', '', line)
+            line = re.sub(r'\bnew\b ', '', line)
+            line = re.sub(r'\bvoid\b ', '', line)
+            line = re.sub(r'\bstatic\b ', '', line)
+            line = re.sub(r'\bprotected\b ', '', line)
+            line = re.sub(r'\bfinal\b ', '', line)
+            line = re.sub(r'@\w+', '', line)
 
-                '''Because of structures like
-                    '} else {'
-                    or
-                    '} catch(Exception e) {'
-                    we delete the spaces after the closing bracket'''
-                line = re.sub(r'}\s*', '', line)
+            '''Because of structures like
+                '} else {'
+                or
+                '} catch(Exception e) {'
+                we delete the spaces after the closing bracket'''
+            line = re.sub(r'}\s*', '', line)
 
-                # If no thing remains, make the line blank
-                line = re.sub(r'^\s*$', '', line)
+            # If no thing remains, make the line blank
+            line = re.sub(r'^\s*$', '', line)
 
-                # Some reserved words
-                line = re.sub(r'\bthis\b', 'self', line)
-                line = re.sub(r'\btrue\b', 'True', line)
-                line = re.sub(r'\bfalse\b', 'False', line)
-                line = re.sub(r'(\W)\b(this)\b(\W)', r'\1self\3', line)
-                line = re.sub(r'(\W)\b(null)\b(\W)', r'\1None\3', line)
-                line = re.sub(r'System\.out\.println\(', r'print(', line)
-                line = re.sub(r'System\.out\.print\((?P<content>.*)\)', r'print(\g<content>,)', line)
+            # Some reserved words
+            line = re.sub(r'\bthis\b', 'self', line)
+            line = re.sub(r'\btrue\b', 'True', line)
+            line = re.sub(r'\bfalse\b', 'False', line)
+            line = re.sub(r'(\W)\b(this)\b(\W)', r'\1self\3', line)
+            line = re.sub(r'(\W)\b(null)\b(\W)', r'\1None\3', line)
+            line = re.sub(r'System\.out\.println\(', r'print(', line)
+            line = re.sub(r'System\.out\.print\((?P<content>.*)\)', r'print(\g<content>,)', line)
 
-                for k, v in replacements.items():
-                    line = re.sub(r'\b' + k + r'\b', v, line)
+            for k, v in replacements.items():
+                line = re.sub(r'\b' + k + r'\b', v, line)
 
-                pFile.write(line)
+            pFile.write(line)
 
 
 def processDir(dirName):
