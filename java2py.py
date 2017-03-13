@@ -17,7 +17,7 @@ import sys
 import os
 import getopt
 
-RECURSIVE = False
+recursive = False
 PRIVACY_PREFIXES = {'private': '__', 'protected': '_', 'public': ''}
 
 
@@ -56,17 +56,34 @@ def transform(javaFile, pyFile):
     '''
     with open(javaFile, 'r') as jFile:
         with open(pyFile, 'w+') as pFile:
+            # For variable names replacements
             replacements = {}
+
+            # In Java, a variable may be belong to one out of three kinds of privacy
             privModifsExp = r'\s*(?P<priv>((\bpublic\b\s*|\bprivate\b\s*|\bprotected\b\s*))+)?'
+
+            # Modifiers for variables and functions
             vmodifsExp = r'(?P<vmodifs>\b(static\s*|final\s*|transient\s*|volatile\s*)+)?'
             fmodifsExp = r'(?P<fmodifs>\b(abstract\s*|static\s*|synchronized\s*|native\s*)+)?'
+
+            # Data type for a variable or the function returned value
             datatypeExp = r'\b(?P<type>\w+)(<.*?>)?\[?\]?\s*'
+
+            # The whole of variable or function declaration
             varDecExp = r'^(?P<space>\s*)' + privModifsExp + vmodifsExp + datatypeExp + r'\b(?P<vname>\w+)\s*(?P<value>=.*)?;'
             funDecExp = r'^(?P<space>\s*)<?[^=\.\(\)]*?>?\s*' + privModifsExp + fmodifsExp + datatypeExp + r'\b(?P<fname>\w+)\((?P<fargs>.*)\)\s*\{?'
+            generalForExp = r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?'
 
-            # Esto es lo que usaremos en las iteraciones
+            # For better performance, we compile the patterns for declaration statements
             varPattern = re.compile(varDecExp)
             funPattern = re.compile(funDecExp)
+
+            quickTaskList = []
+            quickTaskList.append((r'^(\s*)package', r'\1#package'))
+            quickTaskList.append((r'^(\s*)import', r'\1#import'))
+            quickTaskList.append((r'//', r'#'))
+            quickTaskList.append((r'/\*|\*/', r'"""'))
+            quickTaskList.append((r'@param', r':param'))
 
             className = None
             interfaceName = None
@@ -75,22 +92,19 @@ def transform(javaFile, pyFile):
                 line = line.rstrip()
                 line = line + os.linesep
 
-                if quickTask(line, r'^(\s*)package', r'\1#package', pFile):
+                taskMade = False
+                # 1-Change replacements tasks which can be made and allow to go on with the next line if made
+                for task in quickTaskList:
+                    taskMade = quickTask(line, task[0], task[1], pFile)
+                    if taskMade:
+                        break
+
+                if taskMade:
+                    taskMade = False
                     continue
 
-                if quickTask(line, r'^(\s*)import', r'\1#import', pFile):
-                    continue
-
-                if quickTask(line, r'//', r'#', pFile):
-                    continue
-
-                if quickTask(line, r'/\*|\*/', r'"""', pFile):
-                    continue
-
-                if quickTask(line, r'^\s*}\s*\r?\n'):
-                    continue
-
-                if quickTask(line, r'^\s*\r?\n'):
+                # Not meaningful lines. We don't need to write to pFile. We may continue the for loop
+                if quickTask(line, r'^\s*}\s*\r?\n') or quickTask(line, r'^\s*\r?\n'):
                     continue
 
                 # CLASS DECLARATION
@@ -106,16 +120,19 @@ def transform(javaFile, pyFile):
 
                 if classDefLine:
                     className = classDefLine.group('name')
+                    isAbstractClass = re.search(r'abstract', line)
                     line = re.sub(r'(.*?)\w* class \b(?P<name>\w+)\b(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
                     # Adds the parents
                     line = re.sub(r'\(\).*\bextends (?P<parents>([ .\w]*))\s*?(?P<nline>\r?\n?)', r'(\g<parents>):\g<nline>', line)
                     # Adds the interfaces if there were no parents
-                    line = re.sub(r'\(\).*\bimplements (?P<contracts>(.*))', r'(\g<contracts>)', line)
+                    line = re.sub(r'\(\).*\bimplements (?P<ifaces>(.*))', r'(\g<ifaces>)', line)
                     # Adds the interfaces if there were parents
-                    line = re.sub(r'\((?P<parents>.+?).*\bimplements (?P<contracts>\S*)\s*', r'(\g<parents>,\g<contracts>', line)
+                    line = re.sub(r'\((?P<parents>.+?).*\bimplements (?P<ifaces>\S*)\s*', r'(\g<parents>,\g<ifaces>', line)
+                    if isAbstractClass:
+                        line = re.sub(r')\s*:', r', metaclass=ABCMeta)', line)
                 elif interfaceDefLine:
                     interfaceName = interfaceDefLine.group('name')
-                    line = re.sub(r'(.*?)\w* interface \b(?P<name>\w+)\b(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
+                    line = re.sub(r'(.*?)\w* interface \b(?P<name>\w+)\b(.*?)\s*{(?P<nlin>\r?\n?)', r'\1class \g<name>(): \3\g<nlin>', line)
                 elif consMatch:
                     args = processArgs(consMatch.group('args'))
                     if className:
@@ -132,14 +149,14 @@ def transform(javaFile, pyFile):
                     space = varMatch.group('space')
                     priv = varMatch.group('priv').rstrip() if varMatch.group('priv') else ''
 
-#                     vmodifs = varMatch.group('vmodifs')
-#                     vtype = varMatch.group('type')
+                    # vmodifs = varMatch.group('vmodifs')
+                    # vtype = varMatch.group('type')
                     vname = PRIVACY_PREFIXES.get(priv, '') + varMatch.group('vname')
                     replacements[varMatch.group('vname')] = vname
 
-                    # Si es array, lo convertimos a una inicializacion a [] con ; de Java
+                    # If it's an array, we make the [] initialisation with the semicolon (;) ending
                     line = re.sub(r'(.*)(?P<arr>(\[\])+)([^=]*);', r'\1\3 = \g<arr>;', line)
-                    # Si no es array, inicializamos a None
+                    # If it's not an array, first value will be None
                     line = re.sub(r'^([^=]*);', r'\1 = None;', line)
                     line = re.sub(varPattern, space + vname + r' \g<value>', line)
                 elif funMatch:
@@ -147,7 +164,7 @@ def transform(javaFile, pyFile):
                     priv = funMatch.group('priv').rstrip() if funMatch.group('priv') else ''
 
                     fmodifs = funMatch.group('fmodifs').rstrip() if funMatch.group('fmodifs') else ''
-#                         ftype = funMatch.group('type')
+                    # ftype = funMatch.group('type')
                     fname = PRIVACY_PREFIXES.get(priv, '') + funMatch.group('fname')
                     replacements[funMatch.group('fname')] = fname
 
@@ -171,7 +188,7 @@ def transform(javaFile, pyFile):
                 line = re.sub(r'\bList(<\b\w*\b>)', r'', line)
 
                 # Control structures
-                line = re.sub(r'(\w+).equals\((.*)\)', r'\1 == \2', line)
+                line = re.sub(r'.equals\((.*)\)', r' == \1', line)
                 line = re.sub(r'!=\s*null', r'', line)
                 line = re.sub(r'==\s*null', r'is None', line)
                 line = re.sub(r'!\s*\(', r'not (', line)
@@ -182,9 +199,11 @@ def transform(javaFile, pyFile):
                 line = re.sub(r'\belse if\b\s*\((?P<cond>.*)\).*{', r'elif \g<cond>: #TODO Check condition', line)
                 line = re.sub(r'if\s*\((?P<cond>.*)\).*{', r'if \g<cond>: #TODO Check condition', line)
                 line = re.sub(r'(\s*)}?.*\belse\b.*{?', r'\1else:', line)
-                line = re.sub(r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?', r'for \1 in range(\2, \3): # FIXME \g<nline>', line)
-                line = re.sub(r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<=\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?', r'for \1 in range(\2, \3+1): # FIXME \g<nline>', line)
+
+                line = re.sub(generalForExp, r'for \1 in range(\2, \3): # FIXME \g<nline>', line)
+                line = re.sub(generalForExp.replace('<', '<='), r'for \1 in range(\2, \3+1): # FIXME \g<nline>', line)
                 line = re.sub(r'\bfor\b.*\(.*\b(\w+)\b.*:.*\b(\w+)\b.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?', r'for \1 in \2: #TODO Check condition\g<nline> ', line)
+                line = re.sub(r'range\(0,', r'range(', line)
 
                 line = re.sub(r'\bthrow\b', r'raise', line)
                 line = re.sub(r'\btry\b\s*{', 'try:', line)
@@ -194,10 +213,6 @@ def transform(javaFile, pyFile):
                 line = re.sub(r'Integer.valueOf\((.+)\)', r'int(\1)', line)
                 line = re.sub(r'(\w+).toString()', r'str(\1)', line)
 
-                # Comments
-                line = re.sub(r';', '', line)
-                line = re.sub(r'@param', ':param', line)
-
                 # Some operator replacements
                 line = re.sub(r'(\w+)\+\+', r'\1 += 1', line)
                 line = re.sub(r'(\w+)--', r'\1 -= 1', line)
@@ -206,6 +221,7 @@ def transform(javaFile, pyFile):
                 line = re.sub(r'new\s*\b(?P<name>\w+)\b\((.*)\)\s*{$', r'class \g<name>: #TODO Revisar \2', line)
 
                 # Tokens to be completely deleted
+                line = re.sub(r';', '', line)
                 line = re.sub(r'\bnew\b ', '', line)
                 line = re.sub(r'\bvoid\b ', '', line)
                 line = re.sub(r'\bstatic\b ', '', line)
@@ -246,7 +262,7 @@ def processDir(dirName):
     os.chdir(dirName)
     for actualDir, subDirs, dirFiles in os.walk(dirName):
         # With recursive flag on
-        if RECURSIVE:
+        if recursive:
             for subdirName in subDirs:
                 processDir(subdirName)
 
@@ -272,8 +288,8 @@ def main(argv):
     '''
     First we process options, then we do the code translation from java to python
     '''
-    # BASE_DIR is the current working directory
-    BASE_DIR = os.getcwd()
+    # baseDir is the current working directory
+    baseDir = os.getcwd()
 
     try:
         # Options and arguments processing
@@ -289,25 +305,25 @@ def main(argv):
 
     # Proceeding to the code translation
     for opt, val in opts:
-        RECURSIVE = opt in ['-r', '-R', '--recursive']
+        recursive = opt in ['-r', '-R', '--recursive']
 
         print('value is ' + val)
         if opt in ['-d', '--dir']:
             isRelativeDir = val[0] != os.path.sep and val[0].isalnum()
             if isRelativeDir:
-                BASE_DIR = os.path.join(BASE_DIR, val)
+                baseDir = os.path.join(baseDir, val)
             else:
-                BASE_DIR = val
-            processDir(BASE_DIR)
+                baseDir = val
+            processDir(baseDir)
         elif opt in ['-f', '--file']:
-            processFile(os.path.join(BASE_DIR, val))
+            processFile(os.path.join(baseDir, val))
         else:
-            os.chdir(BASE_DIR)
+            os.chdir(baseDir)
             if os.path.isdir(val):
-                BASE_DIR = os.path.join(BASE_DIR, val)
-                processDir(BASE_DIR)
+                baseDir = os.path.join(baseDir, val)
+                processDir(baseDir)
             else:
-                processFile(os.path.join(BASE_DIR, val))
+                processFile(os.path.join(baseDir, val))
     sys.exit(0)
 
 if __name__ == "__main__":
