@@ -2,14 +2,15 @@
 
 '''
 TODO
-Tipos de datos con r'<.*>\[.*\]'
-Revisar el for
-Metodo toString en declaracion de metodo
-Llamada / invocacion a metodo toString() u otros:
+- Tipos de datos con r'<.*>\[.*\]'
+- Revisar el for
+- Metodo toString en declaracion de metodo
+- Constructor Enum
+- Llamada / invocacion a metodo toString() u otros:
     Regex de algo que puede invocar un metodo es (?P<obj>(\w+(?P<parenth>\(.*?\))?\.)+)nombreMetodo\(\)
-Usar @abc.abstractmethod justo encima de los metodos abstractos?
-Usar class Abstract([metaclass=ABCMeta]|ABC) para las abstractas (Python +3 y +3.4 respectivamente)
-Deteccion mejorada interfaces :
+- Usar @abc.abstractmethod justo encima de los metodos abstractos?
+- Usar class Abstract([metaclass=ABCMeta]|ABC) para las abstractas (Python +3 y +3.4 respectivamente)
+- Deteccion mejorada interfaces :
     (public)? interface\s*\b(?P<name>\w+\b<>)
     \s*(extends\s*(?P<inames>(((\w+\.?)*<?\w*>?,?\s*))+))?\s*{?
 TODO
@@ -70,6 +71,7 @@ def transform(javaFile, pyFile):
     # The whole of variable or function declaration
     varDecExp = r'^(?P<space>\s*)' + privModifsExp + vmodifsExp + datatypeExp + r'\b(?P<vname>\w+)\s*(?P<value>=.*)?;'
     funDecExp = r'^(?P<space>\s*)<?[^=\.\(\)]*?>?\s*' + privModifsExp + fmodifsExp + datatypeExp + r'\b(?P<fname>\w+)\((?P<fargs>.*)\)\s*\{?'
+    enumExp = r'(public)?\s*\benum\b\s*\b(?P<name>\w+)\b\s*\{?'
     generalForExp = r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?'
     generalLtForExp = r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<=\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?'
 
@@ -80,9 +82,14 @@ def transform(javaFile, pyFile):
     quickTaskList = []
     quickTaskList.append((r'^(\s*)package', r'\1#package'))
     quickTaskList.append((r'^(\s*)import', r'\1#import'))
+
+    # COMMENTS
+
     quickTaskList.append((r'//', r'#'))
-    quickTaskList.append((r'/\*|\*/', r'"""'))
-    quickTaskList.append((r'@param', r':param'))
+    # Block comment begin/end and block comment middle line with or without param
+    quickTaskList.append((r'/\*\*?|\*/', r'"""'))
+    quickTaskList.append((r'^(\s*)\*\s*@param', r'\1:param'))
+    quickTaskList.append((r'^(\s*)\*\s*', r'\1'))
 
     with open(javaFile, 'r') as jFile, open(pyFile, 'w+') as pFile:
         # For variable names replacements
@@ -110,7 +117,8 @@ def transform(javaFile, pyFile):
             if quickTask(line, r'^\s*}\s*\r?\n') or quickTask(line, r'^\s*\r?\n'):
                 continue
 
-            # CLASS DECLARATION
+            # Comment block middle line
+
             classDefLine = re.search(r'\bclass (?P<name>\w+)', line)
             interfaceDefLine = re.search(r'\binterface (?P<name>\w+)', line)
             consMatch = None
@@ -118,8 +126,12 @@ def transform(javaFile, pyFile):
                 consMatch = re.search(r'\b' + className + r'\b\((?P<args>.*)\)\s*\{?', line)
 
             returnMatch = re.search(r'return .*;', line)
+            enumMatch = re.search(enumExp, line)
             varMatch = re.search(varPattern, line)
             funMatch = re.search(funPattern, line)
+
+            # Removing annotations
+            line = re.sub(r'@\w+', '', line)
 
             if classDefLine:
                 className = classDefLine.group('name')
@@ -132,13 +144,15 @@ def transform(javaFile, pyFile):
                 # Adds the interfaces if there were parents
                 line = re.sub(r'\((?P<parents>.+?).*\bimplements (?P<ifaces>\S*)\s*', r'(\g<parents>,\g<ifaces>', line)
                 if isAbstractClass:
-                    line = re.sub(className+r'\((?P<ancestors>(\w+, )*\w+)\)\s*:', r'(\g<ancestors>, metaclass=ABCMeta):', line)
-                    line = re.sub(className+r'\(\s*\)\s*:', r'(metaclass=ABCMeta):', line)
+                    line = re.sub(className + r'\((?P<ancestors>(\w+, )*\w+)\)\s*:', className + r'(\g<ancestors>, metaclass=ABCMeta):', line)
+                    line = re.sub(className + r'\(\s*\)\s*:', className + r'(metaclass=ABCMeta):', line)
                 else:
-                    pass # TODO Heredar de object si no hay padres
+                    line = re.sub(r'\(\):', r'(object):', line)
             elif interfaceDefLine:
                 interfaceName = interfaceDefLine.group('name')
                 line = re.sub(r'(.*?)\w* interface \b(?P<name>\w+)\b(.*?)\s*{(?P<nlin>\r?\n?)', r'\1class \g<name>(): \3\g<nlin>', line)
+            elif enumMatch:
+                line = re.sub(enumExp, r'class \g<name>(Enum):', line)
             elif consMatch:
                 args = processArgs(consMatch.group('args'))
                 if className:
@@ -188,12 +202,15 @@ def transform(javaFile, pyFile):
                 line = re.sub(funPattern, space + r'def ' + fname + r'(' + args + '):', line)
                 line = re.sub(r'throws (\w*Exception,?\s*)+[ \t]{?', r'', line)
                 if 'static' in fmodifs:
-                    line = space + '@staticmethod\n' + line
+                    line = os.linesep + space + '@staticmethod\n' + line
                 if interfaceName or 'abstract' in fmodifs:
                     line += space + '\tpass\n'
                 line = os.linesep + line
+                if 'abstract' in fmodifs:
+                    line = os.linesep + space + '@abstractmethod' + line
 
-            line = re.sub(r'new ArrayList(<\b\w*\b>)?\(.*\)?', r'[]', line)
+            line = re.sub(r'new ArrayList(<\w*>)?\(.*\)?', r'[]', line)
+            line = re.sub(r'new LinkedList(<\w*>)?\(.*\)?', r'[]', line)
             line = re.sub(r'\bList(<\b\w*\b>)', r'', line)
 
             # Control structures
@@ -236,14 +253,13 @@ def transform(javaFile, pyFile):
             line = re.sub(r'\bstatic\b ', '', line)
             line = re.sub(r'\bprotected\b ', '', line)
             line = re.sub(r'\bfinal\b ', '', line)
-            line = re.sub(r'@\w+', '', line)
 
             '''Because of structures like
                 '} else {'
                 or
                 '} catch(Exception e) {'
                 we delete the spaces after the closing bracket'''
-            line = re.sub(r'}\s*', '', line)
+            line = re.sub(r'}[ \t]*', '', line)
 
             # If no thing remains, make the line blank
             line = re.sub(r'^\s*$', '', line)
