@@ -2,6 +2,15 @@
 
 '''
 TODO
+- Declaracion de clase mejorada:
+    (?P<modifs>(\b\w+\s*)*)class\s*(?P<className>\w+)(<.*>)?\s*
+    (extends\s*(?P<parent>\w+)\s*)?
+    (implements\s*(?P<ifaces>((\w+,?\s*)*\w+)))?
+    \s*\{?
+- Declaracion Enum mejorada:
+    enum\s*(?P<name>\w+)\s*
+    (implements\s*(?P<ifaces>((\w+,?\s*)*\w+)))?
+    \s*{?
 - Tipos de datos con r'<.*>\[.*\]'
 - Revisar el for
 - Metodo toString en declaracion de metodo
