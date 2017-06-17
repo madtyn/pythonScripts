@@ -1,9 +1,19 @@
 #!/usr/bin/python3
 
-'''
+r'''
 TODO
+- Declaracion de clase mejorada:
+    (?P<modifs>(\b\w+\s*)*)class\s*(?P<className>\w+)(<.*>)?\s*
+    (extends\s*(?P<parent>\w+)\s*)?
+    (implements\s*(?P<ifaces>((\w+,?\s*)*\w+)))?
+    \s*\{?
+- Declaracion Enum mejorada:
+    enum\s*(?P<name>\w+)\s*
+    (implements\s*(?P<ifaces>((\w+,?\s*)*\w+)))?
+    \s*{?
 - Tipos de datos con r'<.*>\[.*\]'
 - Revisar el for
+    Buscar una expresion mejorada para el for (dividrlo en dos o tres partes y resolverlo en base a operadores :,<=,<,>)
 - Metodo toString en declaracion de metodo
 - Constructor Enum
 - Llamada / invocacion a metodo toString() u otros:
@@ -13,7 +23,6 @@ TODO
 - Deteccion mejorada interfaces :
     (public)? interface\s*\b(?P<name>\w+\b<>)
     \s*(extends\s*(?P<inames>(((\w+\.?)*<?\w*>?,?\s*))+))?\s*{?
-TODO
 '''
 
 import re
@@ -23,6 +32,28 @@ import getopt
 
 recursive = False
 PRIVACY_PREFIXES = {'private': '__', 'protected': '_', 'public': ''}
+
+# In Java, a variable may be belong to one out of three kinds of privacy
+EX_PRIV_MODIFS = r'\s*(?P<priv>((\bpublic\b\s*|\bprivate\b\s*|\bprotected\b\s*))+)?'
+
+# Modifiers for variables and functions
+EX_VAR_MODIFS = r'(?P<vmodifs>\b(static\s*|final\s*|transient\s*|volatile\s*)+)?'
+EX_FUN_MODIFS = r'(?P<fmodifs>\b(abstract\s*|static\s*|synchronized\s*|native\s*)+)?'
+
+# Data type for a variable or the function returned value
+EX_DATA_TYPE = r'\b(?P<type>\w+)(<.*?>)?\[?\]?\s*'
+
+# The whole of variable or function declaration
+EX_VAR_DECL = r'^(?P<space>\s*)' + EX_PRIV_MODIFS + EX_VAR_MODIFS + EX_DATA_TYPE + r'\b(?P<vname>\w+)\s*(?P<value>=.*)?;'
+EX_FUN_DECL = r'^(?P<space>\s*)<?[^=\.\(\)]*?>?\s*' + EX_PRIV_MODIFS + EX_FUN_MODIFS + EX_DATA_TYPE + r'\b(?P<fname>\w+)\((?P<fargs>.*)\)\s*\{?'
+EX_ENUM_DECL = r'(public)?\s*\benum\b\s*\b(?P<name>\w+)\b\s*\{?'
+EX_BASIC_FOR = r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?'
+EX_LT_FOR = r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<=\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?'
+EX_EACH_FOR = r'\bfor\b.*\(.*\b(\w+)\b.*:.*\b(\w+)\b.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?'
+
+# For better performance, we compile the patterns for declaration statements
+PAT_VAR_DECL = re.compile(EX_VAR_DECL)
+PAT_FUN_DECL = re.compile(EX_FUN_DECL)
 
 
 def quickTask(line, regex, replacement=None, foutput=None):
@@ -58,33 +89,12 @@ def transform(javaFile, pyFile):
     '''
     With a java file as input produces a python file as output
     '''
-    # In Java, a variable may be belong to one out of three kinds of privacy
-    privModifsExp = r'\s*(?P<priv>((\bpublic\b\s*|\bprivate\b\s*|\bprotected\b\s*))+)?'
-
-    # Modifiers for variables and functions
-    vmodifsExp = r'(?P<vmodifs>\b(static\s*|final\s*|transient\s*|volatile\s*)+)?'
-    fmodifsExp = r'(?P<fmodifs>\b(abstract\s*|static\s*|synchronized\s*|native\s*)+)?'
-
-    # Data type for a variable or the function returned value
-    datatypeExp = r'\b(?P<type>\w+)(<.*?>)?\[?\]?\s*'
-
-    # The whole of variable or function declaration
-    varDecExp = r'^(?P<space>\s*)' + privModifsExp + vmodifsExp + datatypeExp + r'\b(?P<vname>\w+)\s*(?P<value>=.*)?;'
-    funDecExp = r'^(?P<space>\s*)<?[^=\.\(\)]*?>?\s*' + privModifsExp + fmodifsExp + datatypeExp + r'\b(?P<fname>\w+)\((?P<fargs>.*)\)\s*\{?'
-    enumExp = r'(public)?\s*\benum\b\s*\b(?P<name>\w+)\b\s*\{?'
-    generalForExp = r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?'
-    generalLtForExp = r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<=\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?'
-
-    # For better performance, we compile the patterns for declaration statements
-    varPattern = re.compile(varDecExp)
-    funPattern = re.compile(funDecExp)
-
     quickTaskList = []
     quickTaskList.append((r'^(\s*)package', r'\1#package'))
     quickTaskList.append((r'^(\s*)import', r'\1#import'))
 
     # COMMENTS
-
+    quickTaskList.append((r'^\s*}\s*\r?\n?', os.linesep))
     quickTaskList.append((r'//', r'#'))
     # Block comment begin/end and block comment middle line with or without param
     quickTaskList.append((r'/\*\*?|\*/', r'"""'))
@@ -99,6 +109,13 @@ def transform(javaFile, pyFile):
 
         for oldLine in jFile:
             line = oldLine[:]
+
+            '''
+            Remove not leading whitespace
+            Negative lookbehind (means no previous whitespace [ \t])
+            Negative lookahead (first thing in regex before consuming chars, not being at the line start)
+            '''
+            line = re.sub(r'(?<![ \t])(?!^)[ \t]+', r' ', line)
             line = line.rstrip()
             line = line + os.linesep
 
@@ -113,12 +130,6 @@ def transform(javaFile, pyFile):
                 taskMade = False
                 continue
 
-            # Not meaningful lines. We don't need to write to pFile. We may continue the for loop
-            if quickTask(line, r'^\s*}\s*\r?\n') or quickTask(line, r'^\s*\r?\n'):
-                continue
-
-            # Comment block middle line
-
             classDefLine = re.search(r'\bclass (?P<name>\w+)', line)
             interfaceDefLine = re.search(r'\binterface (?P<name>\w+)', line)
             consMatch = None
@@ -126,9 +137,9 @@ def transform(javaFile, pyFile):
                 consMatch = re.search(r'\b' + className + r'\b\((?P<args>.*)\)\s*\{?', line)
 
             returnMatch = re.search(r'return .*;', line)
-            enumMatch = re.search(enumExp, line)
-            varMatch = re.search(varPattern, line)
-            funMatch = re.search(funPattern, line)
+            enumMatch = re.search(EX_ENUM_DECL, line)
+            varMatch = re.search(PAT_VAR_DECL, line)
+            funMatch = re.search(PAT_FUN_DECL, line)
 
             # Removing annotations
             line = re.sub(r'@\w+', '', line)
@@ -152,7 +163,7 @@ def transform(javaFile, pyFile):
                 interfaceName = interfaceDefLine.group('name')
                 line = re.sub(r'(.*?)\w* interface \b(?P<name>\w+)\b(.*?)\s*{(?P<nlin>\r?\n?)', r'\1class \g<name>(): \3\g<nlin>', line)
             elif enumMatch:
-                line = re.sub(enumExp, r'class \g<name>(Enum):', line)
+                line = re.sub(EX_ENUM_DECL, r'class \g<name>(Enum):', line)
             elif consMatch:
                 args = processArgs(consMatch.group('args'))
                 if className:
@@ -178,7 +189,7 @@ def transform(javaFile, pyFile):
                 line = re.sub(r'(.*)(?P<arr>(\[\])+)([^=]*);', r'\1\3 = \g<arr>;', line)
                 # If it's not an array, first value will be None
                 line = re.sub(r'^([^=]*);', r'\1 = None;', line)
-                line = re.sub(varPattern, space + vname + r' \g<value>', line)
+                line = re.sub(PAT_VAR_DECL, space + vname + r' \g<value>', line)
             elif funMatch:
                 space = funMatch.group('space')
                 priv = funMatch.group('priv').rstrip() if funMatch.group('priv') else ''
@@ -188,6 +199,8 @@ def transform(javaFile, pyFile):
                 fname = PRIVACY_PREFIXES.get(priv, '') + funMatch.group('fname')
                 if fname == 'toString':
                     fname = '__str__'
+                elif fname == 'equals':
+                    fname = '__eq__'
                 else:
                     replacements[funMatch.group('fname')] = fname
 
@@ -199,15 +212,15 @@ def transform(javaFile, pyFile):
                         self_ += ', '
                     args = self_ + args
 
-                line = re.sub(funPattern, space + r'def ' + fname + r'(' + args + '):', line)
+                line = re.sub(PAT_FUN_DECL, space + r'def ' + fname + r'(' + args + '):', line)
                 line = re.sub(r'throws (\w*Exception,?\s*)+[ \t]{?', r'', line)
-                if 'static' in fmodifs:
-                    line = os.linesep + space + '@staticmethod\n' + line
-                if interfaceName or 'abstract' in fmodifs:
-                    line += space + '\tpass\n'
-                line = os.linesep + line
+
                 if 'abstract' in fmodifs:
-                    line = os.linesep + space + '@abstractmethod' + line
+                    line = space + '@abstractmethod' + os.linesep + line
+                if 'static' in fmodifs:
+                    line = space + '@staticmethod' + os.linesep + line
+                if interfaceName or 'abstract' in fmodifs:
+                    line += space + '\tpass' + os.linesep
 
             line = re.sub(r'new ArrayList(<\w*>)?\(.*\)?', r'[]', line)
             line = re.sub(r'new LinkedList(<\w*>)?\(.*\)?', r'[]', line)
@@ -222,13 +235,13 @@ def transform(javaFile, pyFile):
             line = re.sub(r'&&', 'and', line)
             line = re.sub(r'\|\|', 'or', line)
             line = re.sub(r'\bwhile\b\s*\((?P<cond>.*)\).*{', r'while \g<cond>: #TODO Check condition', line)
-            line = re.sub(r'\belse if\b\s*\((?P<cond>.*)\).*{', r'elif \g<cond>: #TODO Check condition', line)
-            line = re.sub(r'if\s*\((?P<cond>.*)\).*{', r'if \g<cond>: #TODO Check condition', line)
+            line = re.sub(r'\belse\s*if\b\s*\((?P<cond>.*)\).*{', r'elif \g<cond>: #TODO Check condition', line)
+            line = re.sub(r'\bif\b\s*\((?P<cond>.*)\).*{', r'if \g<cond>: #TODO Check condition', line)
             line = re.sub(r'(\s*)}?.*\belse\b.*{?', r'\1else:', line)
 
-            line = re.sub(generalForExp, r'for \1 in range(\2, \3): # FIXME \g<nline>', line)
-            line = re.sub(generalLtForExp, r'for \1 in range(\2, \3+1): # FIXME \g<nline>', line)
-            line = re.sub(r'\bfor\b.*\(.*\b(\w+)\b.*:.*\b(\w+)\b.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?', r'for \1 in \2: #TODO Check condition\g<nline> ', line)
+            line = re.sub(EX_BASIC_FOR, r'for \1 in range(\2, \3): # FIXME \g<nline>', line)
+            line = re.sub(EX_LT_FOR, r'for \1 in range(\2, \3+1): # FIXME \g<nline>', line)
+            line = re.sub(EX_EACH_FOR, r'for \1 in \2: #TODO Check condition\g<nline> ', line)
             line = re.sub(r'range\(0,', r'range(', line)
 
             line = re.sub(r'\bthrow\b', r'raise', line)
@@ -262,7 +275,7 @@ def transform(javaFile, pyFile):
             line = re.sub(r'}[ \t]*', '', line)
 
             # If no thing remains, make the line blank
-            line = re.sub(r'^\s*$', '', line)
+            line = re.sub(r'^[ \t]*$', '', line)
 
             # Some reserved words
             line = re.sub(r'\bthis\b', 'self', line)
