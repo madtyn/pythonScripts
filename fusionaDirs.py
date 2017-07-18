@@ -12,7 +12,7 @@ def moveFiler(sourceDir, destinyDir):
 	input: Relative path to the directory which we are going to replicate
 	output: None
 	postcondition: All distinct files remain and all duplicated files get erased.'''
-	
+
 	fileList = [i for i in os.listdir(sourceDir) if os.path.isfile(os.path.join(sourceDir, i))]
 	dirList = [j for j in os.listdir(sourceDir) if os.path.isdir(os.path.join(sourceDir, j))]
 
