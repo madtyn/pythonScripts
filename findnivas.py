@@ -16,19 +16,19 @@ def transform(inFile, outFile):
 		with open(outFile, 'w+') as oFile:
 			for oldLine in iFile:
 				line = oldLine
-				
+
 				match = re.search(r'<idFactura>(.*)</idFactura>', line)
 				if match and not processed['elem']:
 					nextElement += re.sub(r'^(\s*)<idFactura>(.*)</idFactura>(\s*)$', r'\2', line) + ';'
 					processed['elem'] = True
 					continue
-				
+
 				match = re.search(r'<nivaEmisor>(.*)</nivaEmisor>(\s*)$', line)
 				if match and not processed['niva']:
 					nextElement += re.sub(r'(\s*)<nivaEmisor>(.*)</nivaEmisor>', r'\2', line)
 					processed['niva'] = True
 					continue
-				
+
 				if processed['elem'] and processed['niva']:
 					oFile.write(nextElement)
 					nextElement = ''
@@ -41,11 +41,11 @@ def processFile(filename):
 	'''
 	Processes a single file
 	'''
-	# This line makes a regular expression with re.compile() to capture a java file name 
+	# This line makes a regular expression with re.compile() to capture a java file name
 	# and then sub() replaces the extension in it with "py"
 	outFilename = re.compile(r'(?P<name>.*)\.(?P<ext>\w*)$', re.I).sub(r'\g<name>_out.csv', filename)
 	transform(filename, outFilename)
-        
+
 
 def main(argv):
 	'''

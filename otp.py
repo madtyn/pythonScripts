@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import sys
 
@@ -17,92 +17,108 @@ MSGS.append('466d06ece998b7a2fb1d464fed2ced7641ddaa3cc31c9941cf110abbf409ed39598
 MSGS.append('32510ba9babebbbefd001547a810e67149caee11d945cd7fc81a05e9f85aac650e9052ba6a8cd8257bf14d13e6f0a803b54fde9e77472dbff89d71b57bddef121336cb85ccb8f3315f4b52e301d16e9f52f904')
 
 
+def strxor(a, b):
+    '''
+    xor two strings of different lengths
+    :param a: first string
+    :param b: second string
+    '''
+    if len(a) > len(b):
+        return "".join([chr(ord(x) ^ ord(y)) for (x, y) in zip(a[:len(b)], b)])
+    else:
+        return "".join([chr(ord(x) ^ ord(y)) for (x, y) in zip(a, b[:len(a)])])
 
-def strxor(a, b):	 # xor two strings of different lengths
-	if len(a) > len(b):
-		return "".join([chr(ord(x) ^ ord(y)) for (x, y) in zip(a[:len(b)], b)])
-	else:
-		return "".join([chr(ord(x) ^ ord(y)) for (x, y) in zip(a, b[:len(a)])])
 
 def random(size=16):
-	return open("/dev/urandom").read(size)
+    return open("/dev/urandom").read(size)
 
-# Un decorador algo inutil, pero que sirve a modo ilustrativo
-# Habria sido mejor incluir cada funcionalidad propia de cada funcion en la propia funcion
+
 def hexconv(func):
-	def f(*args, **kw):
-		print()
-		if 'encrypt'==func.__name__:
-			r=func(*args, **kw)
-			print('Resultado: Texto encriptado hexadecimal:\n'+r.encode('hex'))
-		elif 'decrypt'==func.__name__:
-			print('Entrada: Texto  encriptado hexadecimal:')
-			if 'cipher' in kw:
-				print(kw['cipher'].encode('hex'))
-			elif len(args)>=2:
-				print(args[1].encode('hex'))
-			r=func(*args, **kw)
-		print()
-		return r
-	return f
+    '''
+    Un decorador algo inutil, pero que sirve a modo ilustrativo
+    Habria sido mejor incluir cada funcionalidad propia de cada funcion en la propia funcion
+    :param func: la funcion a decorar
+    '''
+    def f(*args, **kw):
+        print()
+        if func.__name__ == 'encrypt':
+            result = func(*args, **kw)
+            print('Resultado: Texto encriptado hexadecimal:\n' + result.encode('hex'))
+        elif func.__name__ == 'decrypt':
+            print('Entrada: Texto  encriptado hexadecimal:')
+            if 'cipher' in kw:
+                print(kw['cipher'].encode('hex'))
+            elif len(args) >= 2:
+                print(args[1].encode('hex'))
+            result = func(*args, **kw)
+        print()
+        return result
+    return f
+
 
 @hexconv
 def encrypt(key, msg):
-	c = strxor(key, msg)
-	print()
-	return c
+    c = strxor(key, msg)
+    print()
+    return c
+
 
 @hexconv
 def decrypt(key, cipher):
-	p = strxor(key, cipher)
-	print()
-	print(p)
-
-def	xorCompare(i=0,j=0, c1=' ', c2=' ', fast=True):
-	if c1==' ' and c2==' ':
-		c1 = MSGS[i].decode('hex')
-		c2 = MSGS[j].decode('hex')
-	
-	if fast:
-		return strxor(c1, c2)
-	else: # Caracter por caracter
-		result=''
-		for x,y in zip(c1, c2):
-			print(str(x)+ '(+)'+str(y)+' = '+strxor(x,y))
-			result += strxor(x,y)
-		return result
-			
+    p = strxor(key, cipher)
+    print()
+    print(p)
 
 
-# Recibe una cadena y saca una interpretacion ascii obviando caracteres no alfabeticos	
+def xorCompare(i=0, j=0, c1=' ', c2=' ', fast=True):
+    if c1 == ' ' and c2 == ' ':
+        c1 = MSGS[i].decode('hex')
+        c2 = MSGS[j].decode('hex')
+
+    if fast:
+        return strxor(c1, c2)
+    else:  # Caracter por caracter
+        result = ''
+        for x, y in zip(c1, c2):
+            print(str(x) + '(+)' + str(y) + ' = ' + strxor(x, y))
+            result += strxor(x, y)
+        return result
+
+
 def procesa(cad, hexa=False):
-	if(hexa):
-		cad=cad.decode('hex')
+    '''
+    Recibe una cadena y saca una interpretacion ascii obviando caracteres no alfabeticos
+    :param cad: cadena
+    :param hexa: True si hexadecimal, False en caso contrario
+    '''
+    if hexa:
+        cad = cad.decode('hex')
 
-	cadena=''
-	for x in cad:
-		if x==' ':
-			cadena += '_'
-		elif x == '\x00':
-			cadena += '='
-		elif not x.isalpha():
-			cadena +='.'
-		else:
-			cadena += chr(ord(x))
-	return cadena
-	
+    cadena = ''
+    for x in cad:
+        if x == ' ':
+            cadena += '_'
+        elif x == '\x00':
+            cadena += '='
+        elif not x.isalpha():
+            cadena += '.'
+        else:
+            cadena += chr(ord(x))
+    return cadena
+
+
 def exp(w, r=9):
-	cadtotal=[]
-	for q in range(0,r+1):
-		if(w!=q):
-			"""print str(w)+') ', procesa(MSGS[w], True)
-			print '(+)'
-			print str(q)+') ', procesa(MSGS[q], True)
-			print '-----------------------------------'"""
-			cadtotal.append(xorCompare(w,q))
-	return cadtotal
+    cadtotal = []
+    for q in range(0, r + 1):
+        if(w != q):
+            """print str(w)+') ', procesa(MSGS[w], True)
+            print '(+)'
+            print str(q)+') ', procesa(MSGS[q], True)
+            print '-----------------------------------'"""
+            cadtotal.append(xorCompare(w, q))
+    return cadtotal
+
 
 def main():
-	key = random(1024)
-	ciphertexts = [encrypt(key, msg) for msg in MSGS]
-
+    key = random(1024)
+    ciphertexts = [encrypt(key, msg) for msg in MSGS]

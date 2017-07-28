@@ -19,7 +19,7 @@ if os.isatty(sys.stdout.fileno()):
 else:
     # display GUI message
 
-You should check that the DISPLAY environment variable is set 
+You should check that the DISPLAY environment variable is set
 before going with GUI code too, since it won't work without that.
 '''
 import sys
@@ -45,4 +45,3 @@ else:
     print("stdin is " + str(sys.stdin.isatty()))
     print(msg)
     input()
-    
