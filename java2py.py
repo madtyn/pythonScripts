@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-r'''
+r"""
 TODO
 - Declaracion de clase mejorada:
     (?P<modifs>(\b\w+\s*)*)class\s*(?P<className>\w+)(<.*>)?\s*
@@ -23,7 +23,7 @@ TODO
 - Deteccion mejorada interfaces :
     (public)? interface\s*\b(?P<name>\w+\b<>)
     \s*(extends\s*(?P<inames>(((\w+\.?)*<?\w*>?,?\s*))+))?\s*{?
-'''
+"""
 
 import re
 import sys
@@ -57,14 +57,14 @@ PAT_FUN_DECL = re.compile(EX_FUN_DECL)
 
 
 def quickTask(line, regex, replacement=None, foutput=None):
-    '''
+    """
     Optionally, makes a quick replacement task
     and detects a situation for returning True to continue the loop
     :param line: the line for processing
     :param regex: the regular expression to find or replace
     :param replacement: the replacement for the regex if found
     :param foutput: the foutput to write to if there is a match
-    '''
+    """
     match = re.search(regex, line)
     if match and line and foutput:
         line = re.sub(regex, replacement, line)
@@ -73,10 +73,10 @@ def quickTask(line, regex, replacement=None, foutput=None):
 
 
 def processArgs(args):
-    '''
+    """
     Process the arguments for the Java method removing modifiers and types
     :param args: the args to be processed
-    '''
+    """
     processed = ''
     if args and len(args):
         processed = args[:]
@@ -86,15 +86,15 @@ def processArgs(args):
 
 
 def transform(javaFile, pyFile):
-    '''
+    """
     With a java file as input produces a python file as output
-    '''
+    """
     quickTaskList = []
     quickTaskList.append((r'^(\s*)package', r'\1#package'))
     quickTaskList.append((r'^(\s*)import', r'\1#import'))
 
     # COMMENTS
-    quickTaskList.append((r'^\s*}\s*\r?\n?', os.linesep))
+    quickTaskList.append((r'^\s*}\s*\r?\n?$', os.linesep))
     quickTaskList.append((r'//', r'#'))
     # Block comment begin/end and block comment middle line with or without param
     quickTaskList.append((r'/\*\*?|\*/', r'"""'))
@@ -127,7 +127,6 @@ def transform(javaFile, pyFile):
                     break
 
             if taskMade:
-                taskMade = False
                 continue
 
             classDefLine = re.search(r'\bclass (?P<name>\w+)', line)
@@ -162,6 +161,8 @@ def transform(javaFile, pyFile):
             elif interfaceDefLine:
                 interfaceName = interfaceDefLine.group('name')
                 line = re.sub(r'(.*?)\w* interface \b(?P<name>\w+)\b(.*?)\s*{(?P<nlin>\r?\n?)', r'\1class \g<name>(): \3\g<nlin>', line)
+                # Adds the parents
+                line = re.sub(r'\(\).*\bextends (?P<parents>([ .\w]*))\s*?(?P<nline>\r?\n?)', r'(\g<parents>):\g<nline>', line)
             elif enumMatch:
                 line = re.sub(EX_ENUM_DECL, r'class \g<name>(Enum):', line)
             elif consMatch:
@@ -213,7 +214,7 @@ def transform(javaFile, pyFile):
                     args = self_ + args
 
                 line = re.sub(PAT_FUN_DECL, space + r'def ' + fname + r'(' + args + '):', line)
-                line = re.sub(r'throws (\w*Exception,?\s*)+[ \t]{?', r'', line)
+                line = re.sub(r'throws (\w*Exception,?\s*)+[ \t]*[{;]?', r'', line)
 
                 if 'abstract' in fmodifs:
                     line = space + '@abstractmethod' + os.linesep + line
@@ -228,7 +229,7 @@ def transform(javaFile, pyFile):
 
             # Control structures
             line = re.sub(r'.equals\((.*)\)', r' == \1', line)
-            line = re.sub(r'!=\s*null', r'', line)
+            line = re.sub(r'\s*!=\s*null', r'', line)
             line = re.sub(r'==\s*null', r'is None', line)
             line = re.sub(r'!\s*\(', r'not (', line)
             line = re.sub(r'!\s*\b(\w+)\b', r'not \1', line)
@@ -241,8 +242,8 @@ def transform(javaFile, pyFile):
 
             line = re.sub(EX_BASIC_FOR, r'for \1 in range(\2, \3): # FIXME \g<nline>', line)
             line = re.sub(EX_LT_FOR, r'for \1 in range(\2, \3+1): # FIXME \g<nline>', line)
+            line = re.sub(r'range\(0,\s*', r'range(', line)
             line = re.sub(EX_EACH_FOR, r'for \1 in \2: #TODO Check condition\g<nline> ', line)
-            line = re.sub(r'range\(0,', r'range(', line)
 
             line = re.sub(r'\bthrow\b', r'raise', line)
             line = re.sub(r'\btry\b\s*{', 'try:', line)
@@ -293,10 +294,10 @@ def transform(javaFile, pyFile):
 
 
 def processDir(dirName):
-    '''
+    """
     Processes all files in a directory just using the parent directory name.
     This,is the absolute path
-    '''
+    """
     os.chdir(dirName)
     for actualDir, subDirs, dirFiles in os.walk(dirName):
         # With recursive flag on
@@ -309,9 +310,9 @@ def processDir(dirName):
 
 
 def processFile(filename):
-    '''
+    """
     Processes a single file
-    '''
+    """
     match = re.match(r'.*\.java', filename, re.I)
     if match:
         # This line makes a regular expression with re.compile() to capture a java file name
@@ -323,9 +324,9 @@ def processFile(filename):
 
 
 def main(argv):
-    '''
+    """
     First we process options, then we do the code translation from java to python
-    '''
+    """
     # baseDir is the current working directory
     baseDir = os.getcwd()
 
