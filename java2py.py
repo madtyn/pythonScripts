@@ -2,6 +2,8 @@
 
 r"""
 TODO
+- Proceso de argumentos por linea de comandos mejorado para que no importe el orden de las opciones
+- Variable estatica: static final String DESC = "patata" => ClassName.DESC = "patata"
 - Declaracion de clase mejorada:
     (?P<modifs>(\b\w+\s*)*)class\s*(?P<className>\w+)(<.*>)?\s*
     (extends\s*(?P<parent>\w+)\s*)?
@@ -13,7 +15,7 @@ TODO
     \s*{?
 - Tipos de datos con r'<.*>\[.*\]'
 - Revisar el for
-    Buscar una expresion mejorada para el for (dividrlo en dos o tres partes y resolverlo en base a operadores :,<=,<,>)
+    Buscar una expresion mejorada para el for (dividirlo en dos o tres partes y resolverlo en base a operadores :,<=,<,>)
 - Metodo toString en declaracion de metodo
 - Constructor Enum
 - Llamada / invocacion a metodo toString() u otros:
@@ -30,7 +32,6 @@ import sys
 import os
 import getopt
 
-recursive = False
 PRIVACY_PREFIXES = {'private': '__', 'protected': '_', 'public': ''}
 
 # In Java, a variable may be belong to one out of three kinds of privacy
@@ -63,7 +64,7 @@ def quickTask(line, regex, replacement=None, foutput=None):
     :param line: the line for processing
     :param regex: the regular expression to find or replace
     :param replacement: the replacement for the regex if found
-    :param foutput: the foutput to write to if there is a match
+    :param foutput: the output file to write to if there is a match
     """
     match = re.search(regex, line)
     if match and line and foutput:
@@ -74,7 +75,7 @@ def quickTask(line, regex, replacement=None, foutput=None):
 
 def processArgs(args):
     """
-    Process the arguments for the Java method removing modifiers and types
+    Process the arguments passed into a Java method removing modifiers and types
     :param args: the args to be processed
     """
     processed = ''
@@ -144,20 +145,7 @@ def transform(javaFile, pyFile):
             line = re.sub(r'@\w+', '', line)
 
             if classDefLine:
-                className = classDefLine.group('name')
-                isAbstractClass = re.search(r'abstract', line)
-                line = re.sub(r'(.*?)\w* class \b(?P<name>\w+)\b(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
-                # Adds the parents
-                line = re.sub(r'\(\).*\bextends (?P<parents>([ .\w]*))\s*?(?P<nline>\r?\n?)', r'(\g<parents>):\g<nline>', line)
-                # Adds the interfaces if there were no parents
-                line = re.sub(r'\(\).*\bimplements (?P<ifaces>(.*))', r'(\g<ifaces>)', line)
-                # Adds the interfaces if there were parents
-                line = re.sub(r'\((?P<parents>.+?).*\bimplements (?P<ifaces>\S*)\s*', r'(\g<parents>,\g<ifaces>', line)
-                if isAbstractClass:
-                    line = re.sub(className + r'\((?P<ancestors>(\w+, )*\w+)\)\s*:', className + r'(\g<ancestors>, metaclass=ABCMeta):', line)
-                    line = re.sub(className + r'\(\s*\)\s*:', className + r'(metaclass=ABCMeta):', line)
-                else:
-                    line = re.sub(r'\(\):', r'(object):', line)
+                className, line = processClassDefLine(classDefLine, line)
             elif interfaceDefLine:
                 interfaceName = interfaceDefLine.group('name')
                 line = re.sub(r'(.*?)\w* interface \b(?P<name>\w+)\b(.*?)\s*{(?P<nlin>\r?\n?)', r'\1class \g<name>(): \3\g<nlin>', line)
@@ -166,15 +154,7 @@ def transform(javaFile, pyFile):
             elif enumMatch:
                 line = re.sub(EX_ENUM_DECL, r'class \g<name>(Enum):', line)
             elif consMatch:
-                args = processArgs(consMatch.group('args'))
-                if className:
-                    self_ = 'self'
-                    if len(args):
-                        self_ += ', '
-                    args = self_ + args
-
-                line = re.sub(r'\b' + className + r'\b\((?P<args>.*)\)\s*\{?', r'__init__(' + args + '):', line)
-                line = os.linesep + line
+                line = processConsDefLine(className, consMatch, line)
             elif returnMatch:
                 line = re.sub(r';', '', line)
             elif varMatch:
@@ -208,10 +188,7 @@ def transform(javaFile, pyFile):
                 args = processArgs(funMatch.group('fargs'))
 
                 if className and 'static' not in fmodifs:
-                    self_ = 'self'
-                    if len(args):
-                        self_ += ', '
-                    args = self_ + args
+                    args = prependSelf(args)
 
                 line = re.sub(PAT_FUN_DECL, space + r'def ' + fname + r'(' + args + '):', line)
                 line = re.sub(r'throws (\w*Exception,?\s*)+[ \t]*[{;]?', r'', line)
@@ -293,17 +270,73 @@ def transform(javaFile, pyFile):
             pFile.write(line)
 
 
-def processDir(dirName):
+def processConsDefLine(className, consMatch, line):
+    """
+    Processes an already detected Java constructor declaration line and returns
+    the text line processed to be an approximate Python source code line
+    :param className: the class name
+    :param consMatch: the match object with the args already captured
+    :param line: the java source code line to be processed
+    :return: the processed line
+    """
+    args = processArgs(consMatch.group('args'))
+    if className:
+        args = prependSelf(args)
+    line = re.sub(r'\b' + className + r'\b\((?P<args>.*)\)\s*\{?', r'__init__(' + args + '):', line)
+    line = os.linesep + line
+    return line
+
+
+def processClassDefLine(classDefLine, line):
+    """
+    Processes an already detected Java class declaration line and returns
+    the Java class name and the text line processed to be an approximate Python source code line
+    :param classDefLine: the match object with the className captured
+    :param line: the java source code line to be processed
+    :return: a tuple with the className and the processed line (className,processedLine)
+    """
+    className = classDefLine.group('name')
+    isAbstractClass = re.search(r'abstract', line)
+    line = re.sub(r'(.*?)\w* class \b(?P<name>\w+)\b(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
+    # Adds the parents
+    line = re.sub(r'\(\).*\bextends (?P<parents>([ .\w]*))\s*?(?P<nline>\r?\n?)', r'(\g<parents>):\g<nline>', line)
+    # Adds the interfaces if there were no parents
+    line = re.sub(r'\(\).*\bimplements (?P<ifaces>(.*))', r'(\g<ifaces>)', line)
+    # Adds the interfaces if there were parents
+    line = re.sub(r'\((?P<parents>.+?).*\bimplements (?P<ifaces>\S*)\s*', r'(\g<parents>,\g<ifaces>', line)
+    if isAbstractClass:
+        line = re.sub(className + r'\((?P<ancestors>(\w+, )*\w+)\)\s*:', className + r'(\g<ancestors>, metaclass=ABCMeta):', line)
+        line = re.sub(className + r'\(\s*\)\s*:', className + r'(metaclass=ABCMeta):', line)
+    else:
+        line = re.sub(r'\(\):', r'(object):', line)
+    return className, line
+
+
+def prependSelf(args):
+    """
+    Inserts the 'self' word before arguments when doing OOP
+    :param args: the args already processed for a python method
+    :return: the args string with the 'self' inserted at beginning and an optional comma
+    """
+    self_ = 'self'
+    if len(args):
+        self_ += ', '
+    args = self_ + args
+    return args
+
+
+def processDir(dirName, isRecursive):
     """
     Processes all files in a directory just using the parent directory name.
-    This,is the absolute path
+    :param dirName: the directory name from which the executions starts
+    :param isRecursive: if the behaviour of the execution is to be recursive
     """
     os.chdir(dirName)
     for actualDir, subDirs, dirFiles in os.walk(dirName):
-        # With recursive flag on
-        if recursive:
+        # With RECURSIVE flag on
+        if isRecursive:
             for subdirName in subDirs:
-                processDir(subdirName)
+                processDir(subdirName, isRecursive)
 
         for filename in dirFiles:
             processFile(os.path.join(actualDir, filename))
@@ -327,43 +360,59 @@ def main(argv):
     """
     First we process options, then we do the code translation from java to python
     """
-    # baseDir is the current working directory
-    baseDir = os.getcwd()
 
     try:
         # Options and arguments processing
         print('processing opts')
-        opts, args = getopt.getopt(argv, "f:d:rR", ["file", "dir", "recursive"])
+        opts, args = getopt.getopt(argv, "f:d:rRh", ["file", "dir", "recursive"])
         print('opts processed: ' + str(opts))
         print('args processed: ' + str(args))
     except getopt.GetoptError:
         # Errors with options and arguments
         print('Invalid usage')
-        print('Proper usage is java2py [-r] -f fileName | -d dirName ')
+        showHelp()
         sys.exit(-1)
+
+    # BASE_DIR is the current working directory, if assigned is assgined only once
+    BASE_DIR = os.getcwd()
 
     # Proceeding to the code translation
     for opt, val in opts:
-        recursive = opt in ['-r', '-R', '--recursive']
+        if opt in ['-h', '--help']:
+            showHelp()
+            sys.exit(0)
 
-        print('value is ' + val)
+        RECURSIVE = opt in ['-r', '-R', '--recursive'] or False
+
         if opt in ['-d', '--dir']:
-            isRelativeDir = val[0] != os.path.sep and val[0].isalnum()
-            if isRelativeDir:
-                baseDir = os.path.join(baseDir, val)
-            else:
-                baseDir = val
-            processDir(baseDir)
+            # Initial char is not the os system folder separator and is alphanum
+            IS_RELATIVE_DIR = val[0] != os.path.sep and val[0].isalnum()
+            # If relative, there is user input for directory we build absolute path from the working directory
+            # If not relative, the user input is already an absolute path to work with
+            BASE_DIR = os.path.join(BASE_DIR, val) if IS_RELATIVE_DIR else val
+            processDir(BASE_DIR, RECURSIVE)
         elif opt in ['-f', '--file']:
-            processFile(os.path.join(baseDir, val))
+            processFile(os.path.join(BASE_DIR, val))
         else:
-            os.chdir(baseDir)
+            os.chdir(BASE_DIR)
             if os.path.isdir(val):
-                baseDir = os.path.join(baseDir, val)
-                processDir(baseDir)
+                BASE_DIR = os.path.join(BASE_DIR, val)
+                processDir(BASE_DIR, RECURSIVE)
             else:
-                processFile(os.path.join(baseDir, val))
+                processFile(os.path.join(BASE_DIR, val))
     sys.exit(0)
+
+
+def showHelp():
+    """
+    Prints the help on the screen
+    """
+    print('Proper usage is, in strict order: java2py [-r|-R] -f FileName.java | -d dirName\n')
+    print("-f FileName.java: Process the java source code file with name 'FileName.java' and stops")
+    print("-d dirName:       Process all java source code files in the directory with name 'dirName' ")
+    print('-r |-R:           Recursive behaviour. Subdirectories will be processed recursively')
+    print('\nYou can also execute: java2py resourceName being the resource the file name or the directory name ')
+
 
 if __name__ == "__main__":
     main(sys.argv[1:])
