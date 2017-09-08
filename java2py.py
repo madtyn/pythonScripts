@@ -1,12 +1,22 @@
 #!/usr/bin/python3
-
 r"""
-# TODO - Ganar un minimo de eficiencia con un diccionario de matchs. Si el diccionario tiene un solo elemento, no buscar el resto de matchs
-    Mas tarde podemos ver si el match es de tipo 'func', 'var', 'return', etc...
-# TODO - Revisar el for: Buscar expresion mejorada para el for (dividirlo en dos o tres partes y resolverlo en base a operadores :,<=,<,>)
-# TODO - Llamada / invocacion a metodo toString() u otros:
-    Regex de algo que puede invocar un metodo es (?P<obj>(\w+(?P<parenth>\(.*?\))?\.)+)nombreMetodo\(\)
+    This is my humble intent of making a source code translator from Java to Python. It pretends to, having a Java file or
+    a directory as an input, process all Java files it can find in that context for producing the Python equivalent source code files.
+
+    Having into account that Python is a language where the whitespace and indenting is so important, I encourage the
+    user to enter well indented and formatted Java code, following conventions and short lines.
+
+    Thus, the task will be more manageable and the result will be the best.
+
+    This is a tool made for my enjoyment. It can be also used for learning purposes
+    and can ease even more the Python learning curve for those programmers coming
+    from Java or similar languages (C, C++) even if this does not translate C or C++ code.
+    It would be nice to do it in a future, though.
 """
+# TODO - Ganar un minimo de eficiencia con un diccionario de matchs. Si el diccionario tiene un solo elemento, no buscar el resto de matchs
+# TODO    Mas tarde podemos ver si el match es de tipo 'func', 'var', 'return', etc...
+# TODO - Revisar el for: Buscar expresion mejorada para el for (dividirlo en dos o tres partes y resolverlo en base a operadores :,<=,<,>)
+# TODO - Llamada / invocacion a metodo toString() u otros: Regex de algo que puede invocar un metodo es (?P<obj>(\w+(?P<parenth>\(.*?\))?\.)+)nombreMetodo\(\)
 
 import re
 import sys
@@ -308,7 +318,6 @@ def transform(javaFile, pyFile):
             elif funMatch:
                 line = processFuncLine(funMatch, className, interfaceName, replacements, line)
 
-
             line = re.sub(r'new ArrayList(<\w*>)?\(.*\)?', r'[]', line)
             line = re.sub(r'new LinkedList(<\w*>)?\(.*\)?', r'[]', line)
             line = re.sub(r'\bList(<\b\w*\b>)', r'', line)
@@ -330,7 +339,6 @@ def transform(javaFile, pyFile):
             line = re.sub(EX_LT_FOR, r'for \1 in range(\2, \3+1): # FIXME \g<nline>', line)
             line = re.sub(r'range\(0,\s*', r'range(', line)
             line = re.sub(EX_EACH_FOR, r'for \1 in \2: #TODO Check condition\g<nline> ', line)
-
 
             line = re.sub(r'\btry\b\s*{', 'try:', line)
             line = re.sub(r'catch.*\(\s*(?:final)?\s*(?P<class>\b\w*Exception\b)\s+\b(?P<name>\w+)\b\)\s*{', r'except \g<class> as \g<name>:', line)
@@ -358,7 +366,7 @@ def transform(javaFile, pyFile):
                 '} else {'
                 or
                 '} catch(Exception e) {'
-                we delete the spaces after the closing bracket'''
+                we delete only the spaces after the closing bracket'''
             line = re.sub(r'}[ \t]*', '', line)
 
             # If no thing remains, make the line blank
@@ -373,6 +381,7 @@ def transform(javaFile, pyFile):
             line = re.sub(r'System\.out\.println\(', r'print(', line)
             line = re.sub(r'System\.out\.print\((?P<content>.*)\)', r'print(\g<content>,)', line)
 
+            # Replacements applies the conventions for variable names with dunder prefixes, eg: '__privateVar'
             for k, v in replacements.items():
                 line = re.sub(r'\b' + k + r'\b', v, line)
 
