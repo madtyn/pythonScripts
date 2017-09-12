@@ -103,24 +103,28 @@ def prependSelf(args):
     return args
 
 
-def processVarLine(varMatch, replacements, className, line):
+def processVarLine(varMatch, replacements, className, interfaceName, line):
     """
     Processes an already detected Java variable assignment or declaration line and returns
     the text line processed to be an approximate Python source code line
-    :param className:
     :param varMatch: the match object with the whitespace and variable name already captured
-    :param replacements:
+    :param replacements: a dictionary with the variables names in this source code and their python equivalents
+    :param className: in OOP, the name of the current class
+    :param interfaceName: in OOP, the name of the current interface
     :param line: the java source code line to be processed
     :return: the processed line
     """
     space = varMatch.group('space')
-    priv = varMatch.group('priv').rstrip() if varMatch.group('priv') else ''
     vname = varMatch.group('vname')
+
+    # We apply privacy prefixes to variable name if needed
+    priv = varMatch.group('priv').rstrip() if varMatch.group('priv') else ''
     vname = PRIVACY_PREFIXES.get(priv, '') + vname
 
     vmodifs = varMatch.group('vmodifs')
     if vmodifs and 'static' in vmodifs:
-        replacements[varMatch.group('vname')] = className + '.' + vname
+        token = className or interfaceName
+        replacements[varMatch.group('vname')] = token + '.' + vname
     else:
         replacements[varMatch.group('vname')] = vname
 
@@ -148,7 +152,7 @@ def processConsDefLine(className, consMatch, line):
     args = processArgs(consMatch.group('args'))
     if className:
         args = prependSelf(args)
-    line = re.sub(r'\b' + className + r'\b\((?P<args>.*)\)\s*\{?', r'__init__(' + args + '):', line)
+    line = re.sub(EX_PRIV_MODIFS + r'\b' + className + r'\b\((?P<args>.*)\)\s*\{?', r'def __init__(' + args + '):', line)
     line = os.linesep + line
     return line
 
@@ -223,6 +227,25 @@ def processFuncLine(funMatch, className, interfaceName, replacements, line):
         line += space + '\tpass' + os.linesep
     return line
 
+def processCondition(line):
+    """
+    Process all the condition operators and expressions contained within a line
+    :param line: the java source code line to be processed
+    :return: the processed line
+    """
+    result = re.sub(r'.equals\((.*)\)', r' == \1', line)
+    result = re.sub(r'\s*!=\s*null', r'', result)
+    result = re.sub(r'==\s*null', r'is None', result)
+    result = re.sub(r'!\s*\(', r'not (', result)
+    result = re.sub(r'!\s*\b(\w+)\b', r'not \1', result)
+    result = re.sub(r'&&', 'and', result)
+    result = re.sub(r'\|\|', 'or', result)
+    result = re.sub(r'\b(\w+)\b[ \t]*==[ \t]*true', r'\1', result)
+    result = re.sub(r'\b(\w+)\b[ \t]*==[ \t]*false', r'not \1', result)
+
+    result = re.sub(r'\btrue\b', 'True', result)
+    result = re.sub(r'\bfalse\b', 'False', result)
+    return result
 
 def transform(javaFile, pyFile):
     """
@@ -252,9 +275,10 @@ def transform(javaFile, pyFile):
 
             '''
             Remove not leading whitespace
-            Negative lookbehind (means no previous whitespace [ \t])
+            Negative lookbehind (means no previous whitespace [ ])
             Negative lookahead (first thing in regex before consuming chars, not being at the line start)
             '''
+            line = re.sub(r'\t', r'    ', line)
             line = re.sub(r'(?<![ \t])(?!^)[ \t]+', r' ', line)
             line = line.rstrip()
             line = line + os.linesep
@@ -314,7 +338,7 @@ def transform(javaFile, pyFile):
             elif returnMatch:
                 line = re.sub(r';', '', line)
             elif varMatch:
-                line = processVarLine(varMatch, replacements, className, line)
+                line = processVarLine(varMatch, replacements, className, interfaceName, line)
             elif funMatch:
                 line = processFuncLine(funMatch, className, interfaceName, replacements, line)
 
@@ -323,13 +347,8 @@ def transform(javaFile, pyFile):
             line = re.sub(r'\bList(<\b\w*\b>)', r'', line)
 
             # Control structures
-            line = re.sub(r'.equals\((.*)\)', r' == \1', line)
-            line = re.sub(r'\s*!=\s*null', r'', line)
-            line = re.sub(r'==\s*null', r'is None', line)
-            line = re.sub(r'!\s*\(', r'not (', line)
-            line = re.sub(r'!\s*\b(\w+)\b', r'not \1', line)
-            line = re.sub(r'&&', 'and', line)
-            line = re.sub(r'\|\|', 'or', line)
+            line = processCondition(line)
+
             line = re.sub(r'\bwhile\b\s*\((?P<cond>.*)\).*{', r'while \g<cond>: #TODO Check condition', line)
             line = re.sub(r'\belse\s*if\b\s*\((?P<cond>.*)\).*{', r'elif \g<cond>: #TODO Check condition', line)
             line = re.sub(r'\bif\b\s*\((?P<cond>.*)\).*{', r'if \g<cond>: #TODO Check condition', line)
@@ -355,12 +374,12 @@ def transform(javaFile, pyFile):
             line = re.sub(r'new\s*\b(?P<name>\w+)\b\((.*)\)\s*{$', r'class \g<name>: #TODO Revisar \2', line)
 
             # Tokens to be completely deleted
-            line = re.sub(r';', '', line)
             line = re.sub(r'\bnew\b ', '', line)
             line = re.sub(r'\bvoid\b ', '', line)
             line = re.sub(r'\bstatic\b ', '', line)
             line = re.sub(r'\bprotected\b ', '', line)
             line = re.sub(r'\bfinal\b ', '', line)
+            line = re.sub(r';', '', line)
 
             '''Because of structures like
                 '} else {'
@@ -374,8 +393,7 @@ def transform(javaFile, pyFile):
 
             # Some reserved words
             line = re.sub(r'\bthis\b', 'self', line)
-            line = re.sub(r'\btrue\b', 'True', line)
-            line = re.sub(r'\bfalse\b', 'False', line)
+
             line = re.sub(r'(\W)\b(this)\b(\W)', r'\1self\3', line)
             line = re.sub(r'(\W)\b(null)\b(\W)', r'\1None\3', line)
             line = re.sub(r'System\.out\.println\(', r'print(', line)
@@ -395,14 +413,21 @@ def processFile(filename):
     """
     Processes a single file
     """
-    match = re.match(r'.*\.java', filename, re.I)
-    if match:
-        # This line makes a regular expression with re.compile() to capture a java file name
-        # and then sub() replaces the extension in it with "py"
-        pyFilename = re.compile(r'java$', re.I).sub('py', filename)
-        transform(filename, pyFilename)
-    else:
-        print(os.path.basename(filename) + ' is not a java file')
+    try:
+        match = re.match(r'.*\.java', filename, re.I)
+        if match:
+            # This line makes a regular expression with re.compile() to capture a java file name
+            # and then sub() replaces the extension in it with "py"
+            pyFilename = re.compile(r'java$', re.I).sub('py', filename)
+            transform(filename, pyFilename)
+        else:
+            print(os.path.basename(filename) + ' is not a java file')
+    except Exception as e:
+        print('Error when processing '+filename)
+        print(str(e))
+        print(repr(e))
+        raise e
+
 
 
 def processDir(dirName, recursive):
@@ -458,7 +483,7 @@ def main(argv):
     # if assigned is assigned only once wir a file path or dir path
     TARGET_PATH = os.getcwd()
 
-    # TODO - Proceso de argumentos por linea de comandos mejorado para que no importe el orden de las opciones
+    # TODO - Proceso de argumentos por linea de comandos mejorado (otra libreria?)
     # args processing
     for opt, val in opts:
         HELP = opt in ['-h', '--help'] or HELP
