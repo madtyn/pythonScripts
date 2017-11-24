@@ -14,7 +14,7 @@ r"""
     It would be nice to do it in a future, though.
 """
 # TODO - Ganar un minimo de eficiencia con un diccionario de matchs. Si el diccionario tiene un solo elemento, no buscar el resto de matchs
-# TODO    Mas tarde podemos ver si el match es de tipo 'func', 'var', 'return', etc...
+# TODO        Mas tarde podemos ver si el match es de tipo 'func', 'var', 'return', etc...
 # TODO - Revisar el for: Buscar expresion mejorada para el for (dividirlo en dos o tres partes y resolverlo en base a operadores :,<=,<,>)
 # TODO - Llamada / invocacion a metodo toString() u otros: Regex de algo que puede invocar un metodo es (?P<obj>(\w+(?P<parenth>\(.*?\))?\.)+)nombreMetodo\(\)
 
@@ -23,14 +23,17 @@ import sys
 import os
 import getopt
 
+
 PRIVACY_PREFIXES = {'private': '__', 'protected': '_', 'public': ''}
+TAB = ' ' * 4
 
 # In Java, a variable may be belong to one out of three kinds of privacy
-EX_PRIV_MODIFS = r'\s*(?P<priv>((\bpublic\b\s*|\bprivate\b\s*|\bprotected\b\s*))+)?'
+EX_PRIV_MODIFS = r'(?P<priv>((\bpublic\b\s*|\bprivate\b\s*|\bprotected\b\s*))+)?'
 
 # Modifiers for variables and functions
 EX_VAR_MODIFS = r'(?P<vmodifs>\b(static\s*|final\s*|transient\s*|volatile\s*)+)?'
 EX_FUN_MODIFS = r'(?P<fmodifs>\b(abstract\s*|static\s*|synchronized\s*|native\s*)+)?'
+EX_CLASS_MODIFS = r'(?P<cmodifs>\b(abstract\s*|final\s*)+)?'
 
 # Data type for a variable or the function returned value
 EX_DATA_TYPE = r'\b(?P<basictype>\w+)(?P<gen><.*>)?(?P<bracks>(\[\])+)?\s*'
@@ -38,6 +41,7 @@ EX_DATA_TYPE = r'\b(?P<basictype>\w+)(?P<gen><.*>)?(?P<bracks>(\[\])+)?\s*'
 # The whole of variable or function declaration
 EX_VAR_DECL = r'^(?P<space>\s*)' + EX_PRIV_MODIFS + EX_VAR_MODIFS + EX_DATA_TYPE + r'\b(?P<vname>\w+)\s*(?P<assign>=.*)?;'
 EX_FUN_DECL = r'^(?P<space>\s*)<?[^=\.\(\)]*?>?\s*' + EX_PRIV_MODIFS + EX_FUN_MODIFS + EX_DATA_TYPE + r'\b(?P<fname>\w+)\((?P<fargs>.*)\)\s*\{?'
+EX_CLASS_DECL = r'^(?P<space>\s*)' + EX_PRIV_MODIFS + EX_CLASS_MODIFS + r'class\s*(?P<className>\w+)(<.*>)?\s*(extends\s*(?P<parent>\w+)\s*)?(implements\s*(?P<ifaces>((\w+,?\s*)*\w+)))?\s*\{?'
 EX_ENUM_DECL = r'(public)?\s*\benum\b\s*\b(?P<name>\w+)\b\s*\{?'
 EX_BASIC_FOR = r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?'
 EX_LT_FOR = r'\bfor\b.*\(.*(\w+)\W*=\W*(\w+)\W*;.*<=\W*([\w\.\(\)\[\]]+);.*\).*\{?.*(?P<nline>\r?\n?)\s*\{?'
@@ -46,6 +50,7 @@ EX_EACH_FOR = r'\bfor\b.*\(.*\b(\w+)\b.*:.*\b(\w+)\b.*\).*\{?.*(?P<nline>\r?\n?)
 # For better performance, we compile the patterns for declaration statements
 PAT_VAR_DECL = re.compile(EX_VAR_DECL)
 PAT_FUN_DECL = re.compile(EX_FUN_DECL)
+PAT_CLASS_DECL = re.compile(EX_CLASS_DECL)
 
 def twoBlankLines(l1, l2):
     """
@@ -86,7 +91,7 @@ def processArgs(args):
     if args and len(args):
         processed = args[:]
         # TODO Meter '*' en tipo array o List/arrayList
-        processed = re.sub(r'(((\b\w+\b[\[\]]*\s+)+))(?P<arg>\b\w+,?)', r'\g<arg>', processed)
+        processed = re.sub(r'(?P<dataType>((\b\w+\b[\[\]]*\s+)+))(?P<arg>\b\w+,?)', r'\g<arg>', processed)
     return processed
 
 
@@ -128,7 +133,6 @@ def processVarLine(varMatch, replacements, className, interfaceName, line):
     else:
         replacements[varMatch.group('vname')] = vname
 
-
     # Non assignment statement
     if varMatch.group('bracks'):
         # If it's an array without assignment, we make the [] initialisation with the semicolon (;) ending
@@ -150,10 +154,12 @@ def processConsDefLine(className, consMatch, line):
     :return: the processed line
     """
     args = processArgs(consMatch.group('args'))
+    space = consMatch.group('space')
     if className:
         args = prependSelf(args)
     line = re.sub(EX_PRIV_MODIFS + r'\b' + className + r'\b\((?P<args>.*)\)\s*\{?', r'def __init__(' + args + '):', line)
     line = os.linesep + line
+    line += space + TAB + 'super().__init__()' + os.linesep
     return line
 
 
@@ -165,28 +171,23 @@ def processClassDefLine(classDefLine, line):
     :param line: the java source code line to be processed
     :return: a tuple with the className and the processed line (className,processedLine)
     """
-    # TODO Improve this class declaration
-    """
-    (?P<modifs>(\b\w+\s*)*)class\s*(?P<className>\w+)(<.*>)?\s*
-    (extends\s*(?P<parent>\w+)\s*)?
-    (implements\s*(?P<ifaces>((\w+,?\s*)*\w+)))?
-    \s*\{?
-    """
-    className = classDefLine.group('name')
-    isAbstractClass = re.search(r'abstract', line)
-    line = re.sub(r'(.*?)\w* class \b(?P<name>\w+)\b(.*?)\s*{(?P<nline>\r?\n?)', r'\1class \g<name>(): \3\g<nline>', line)
-    # Adds the parents
-    line = re.sub(r'\(\).*\bextends (?P<parents>([ .\w]*))\s*?(?P<nline>\r?\n?)', r'(\g<parents>):\g<nline>', line)
-    # Adds the interfaces if there were no parents
-    line = re.sub(r'\(\).*\bimplements (?P<ifaces>(.*))', r'(\g<ifaces>)', line)
-    # Adds the interfaces if there were parents
-    line = re.sub(r'\((?P<parents>.+?).*\bimplements (?P<ifaces>\S*)\s*', r'(\g<parents>,\g<ifaces>', line)
-    # TODO - Usar class Abstract([metaclass=ABCMeta]|ABC) para las abstractas (Python +3 y +3.4 respectivamente)
+
+    className = classDefLine.group('className')
+    priv = classDefLine.group('priv')
+    modifs = classDefLine.group('cmodifs') # abstract and/or final
+    isAbstractClass = modifs and 'abstract' in modifs
+
+    # We retrieve into a list the parent and ifaces groups from the re match
+    ancestors = [classDefLine.group(groupName) for groupName in ['parent', 'ifaces'] if classDefLine.group(groupName)]
     if isAbstractClass:
-        line = re.sub(className + r'\((?P<ancestors>(\w+, )*\w+)\)\s*:', className + r'(\g<ancestors>, metaclass=ABCMeta):', line)
-        line = re.sub(className + r'\(\s*\)\s*:', className + r'(metaclass=ABCMeta):', line)
+        ancestors.append('metaclass=ABCMeta')
+    if len(ancestors):
+        ancestors = ', '.join(ancestors)
     else:
-        line = re.sub(r'\(\):', r'(object):', line)
+        ancestors = 'object'
+
+    line = re.sub(PAT_CLASS_DECL, r'\g<space>class \g<className>('+ancestors+'):', line)
+    # TODO - Usar class Abstract([metaclass=ABCMeta]|ABC) para las abstractas (Python +3 y +3.4 respectivamente)
     return className, line
 
 
@@ -224,7 +225,7 @@ def processFuncLine(funMatch, className, interfaceName, replacements, line):
     if 'static' in fmodifs:
         line = space + '@staticmethod' + os.linesep + line
     if interfaceName or 'abstract' in fmodifs:
-        line += space + '\tpass' + os.linesep
+        line += space + TAB + 'pass' + os.linesep
     return line
 
 def processCondition(line):
@@ -268,6 +269,7 @@ def transform(javaFile, pyFile):
         replacements = {}
         className = None
         interfaceName = None
+        mainMethod = False
         lastLine=''
 
         for oldLine in jFile:
@@ -278,7 +280,7 @@ def transform(javaFile, pyFile):
             Negative lookbehind (means no previous whitespace [ ])
             Negative lookahead (first thing in regex before consuming chars, not being at the line start)
             '''
-            line = re.sub(r'\t', r'    ', line)
+            line = re.sub(r'\t', TAB, line)
             line = re.sub(r'(?<![ \t])(?!^)[ \t]+', r' ', line)
             line = line.rstrip()
             line = line + os.linesep
@@ -294,13 +296,13 @@ def transform(javaFile, pyFile):
                 lastLine = lineResult
                 continue
 
-            classDefLine = re.search(r'\bclass (?P<name>\w+)', line)
+            classDefLine = re.search(PAT_CLASS_DECL, line)
             interfaceDefLine = re.search(r'\binterface (?P<name>\w+)', line)
 
             consMatch = None
             # For constructor line, we check for this className, but not in an instance creation
             if className and not re.search(r'\bnew[ \t]*', line):
-                consMatch = re.search(r'\b' + className + r'\b\((?P<args>.*)\)\s*\{?', line)
+                consMatch = re.search(r'(?P<space>[ \t]*)' + EX_PRIV_MODIFS + r'\b' + className + r'\b\((?P<args>.*)\)\s*\{?', line)
 
             returnMatch = re.search(r'\breturn\b .*;', line)
             throwMatch = re.search(r'\bthrow\b .*;', line)
@@ -340,6 +342,8 @@ def transform(javaFile, pyFile):
             elif varMatch:
                 line = processVarLine(varMatch, replacements, className, interfaceName, line)
             elif funMatch:
+                if not mainMethod:
+                    mainMethod = ';' not in line and re.search('public\s*static\s*void\s*main\(', line)
                 line = processFuncLine(funMatch, className, interfaceName, replacements, line)
 
             line = re.sub(r'new ArrayList(<\w*>)?\(.*\)?', r'[]', line)
@@ -349,15 +353,15 @@ def transform(javaFile, pyFile):
             # Control structures
             line = processCondition(line)
 
-            line = re.sub(r'\bwhile\b\s*\((?P<cond>.*)\).*{', r'while \g<cond>: #TODO Check condition', line)
-            line = re.sub(r'\belse\s*if\b\s*\((?P<cond>.*)\).*{', r'elif \g<cond>: #TODO Check condition', line)
-            line = re.sub(r'\bif\b\s*\((?P<cond>.*)\).*{', r'if \g<cond>: #TODO Check condition', line)
+            line = re.sub(r'\bwhile\b\s*\((?P<cond>.*)\).*{', r'while \g<cond>:', line)
+            line = re.sub(r'\belse\s*if\b\s*\((?P<cond>.*)\).*{', r'elif \g<cond>:', line)
+            line = re.sub(r'\bif\b\s*\((?P<cond>.*)\).*{', r'if \g<cond>:', line)
             line = re.sub(r'(\s*)}?.*\belse\b.*{?', r'\1else:', line)
 
-            line = re.sub(EX_BASIC_FOR, r'for \1 in range(\2, \3): # FIXME \g<nline>', line)
-            line = re.sub(EX_LT_FOR, r'for \1 in range(\2, \3+1): # FIXME \g<nline>', line)
+            line = re.sub(EX_BASIC_FOR, r'for \1 in range(\2, \3):\g<nline>', line)
+            line = re.sub(EX_LT_FOR, r'for \1 in range(\2, \3+1):\g<nline>', line)
             line = re.sub(r'range\(0,\s*', r'range(', line)
-            line = re.sub(EX_EACH_FOR, r'for \1 in \2: #TODO Check condition\g<nline> ', line)
+            line = re.sub(EX_EACH_FOR, r'for \1 in \2:\g<nline> ', line)
 
             line = re.sub(r'\btry\b\s*{', 'try:', line)
             line = re.sub(r'catch.*\(\s*(?:final)?\s*(?P<class>\b\w*Exception\b)\s+\b(?P<name>\w+)\b\)\s*{', r'except \g<class> as \g<name>:', line)
@@ -365,6 +369,8 @@ def transform(javaFile, pyFile):
 
             line = re.sub(r'Integer.valueOf\((.+)\)', r'int(\1)', line)
             line = re.sub(r'([\w]+).toString\(\)', r'str(\1)', line)
+            line = re.sub(r'(?P<struct>\b\w+(\(.*\))?(\.\w+(\(.*\))?)+)\.size\(\)', r'len(\g<struct>)', line)
+            line = re.sub(r'(?P<struct>\b\w+(\(.*\))?(\.\w+(\(.*\))?)+)\.length', r'len(\g<struct>)', line)
 
             # Some operator replacements
             line = re.sub(r'(\w+)\+\+', r'\1 += 1', line)
@@ -407,6 +413,16 @@ def transform(javaFile, pyFile):
             lastLine = line
             if not two_blank_lines:
                 pFile.write(line)
+
+        # We end processing line by line, still in the current file,
+        # didn't go to the next file yet
+        if mainMethod:
+            addMainMethod(pFile, className)
+
+
+def addMainMethod(pFile, className):
+    pFile.write(os.linesep + "if __name__ == '__main__':" + os.linesep)
+    pFile.write("{}{c}.main()".format(TAB, c=className) + os.linesep)
 
 
 def processFile(filename):
@@ -464,7 +480,7 @@ def main(argv):
     try:
         # Options and arguments processing
         print('processing opts')
-        opts, args = getopt.getopt(argv, "f:d:rRh", ["file", "dir", "recursive"])
+        opts, args = getopt.getopt(argv, "f:d:t:rRh", ["file", "dir", "tab", "recursive"])
         print('opts processed: ' + str(opts))
         print('args processed: ' + str(args))
     except getopt.GetoptError:
@@ -490,6 +506,7 @@ def main(argv):
         RECURSIVE = opt in ['-r', '-R', '--recursive'] or RECURSIVE
         DIRMODE = opt in ['-d', '--dir'] or DIRMODE
         FILEMODE = opt in ['-f', '--file'] or FILEMODE
+        TAB = ' ' * int(val) if opt in ['-t', '--tab'] else 4 * ' '
 
         if FILEMODE or DIRMODE:
             # Initial char is not the os system folder separator and is alphanum
